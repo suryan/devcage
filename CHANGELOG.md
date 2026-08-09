@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Clippy: **`all` + `pedantic` fully denied** (no pedantic opt-outs). Refactors: `lib`+thin `main`, policy enums, `PlanRequest`, split verify helpers.
+- Prefer code fixes over `#[allow(clippy::…)]`.
+
 ## [0.5.1] - 2026-08-09
 
 ### Notes
