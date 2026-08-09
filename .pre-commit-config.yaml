@@ -1,0 +1,40 @@
+# Pre-commit hooks for DevCage.
+# Install once: ./scripts/setup-hooks.sh
+# Run all:      pre-commit run --all-files
+#
+# Quality gate (fmt, clippy, shellcheck, tests, coverage) runs via local hooks.
+# ShellCheck uses the host binary (no Docker required).
+
+default_install_hook_types: [pre-commit]
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '^(target/|Cargo\.lock)$'
+      - id: end-of-file-fixer
+        exclude: '^(target/|Cargo\.lock)$'
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  - repo: local
+    hooks:
+      - id: shellcheck-scripts
+        name: shellcheck (scripts/*.sh)
+        entry: scripts/lint-scripts.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: devcage-quality-gate
+        name: devcage quality gate (fmt, clippy, tests, coverage)
+        entry: scripts/check.sh
+        language: system
+        pass_filenames: false
+        always_run: true

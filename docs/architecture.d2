@@ -1,0 +1,50 @@
+# DevCage component architecture (scaffold)
+# Render: d2 docs/architecture.d2 docs/architecture.svg
+
+direction: down
+
+title: |md
+  # DevCage architecture
+| {
+  near: top-center
+}
+
+cli: CLI {
+  shape: rectangle
+  label: "devcage CLI\n(agent / run / shell / stop / doctor)"
+}
+
+config: Config {
+  shape: parallelogram
+  label: "local.env + config dirs\nprofiles (builtin / user / project)"
+}
+
+core: Core {
+  profile: Profile loader
+  session: Session manager
+  plan: FS + net plan
+}
+
+backends: Backends {
+  bwrap: "bwrap\n(Linux)"
+  container: "container\n(Docker/Podman)"
+  future: "vm / native-mac\n(later)"
+}
+
+workload: Workload {
+  shape: hexagon
+  label: "agent / shell /\npackage manager"
+}
+
+host: Host OS {
+  shape: cylinder
+  label: "host kernel +\noptional pkg-guard shims"
+}
+
+cli -> core: "parse + dispatch"
+config -> core: "policy + paths"
+core.profile -> core.plan
+core.session -> backends: "start / stop / wipe"
+backends -> workload: "exec in cage"
+host -> backends: "isolation primitives"
+workload -> host: "only via mounts + net policy"

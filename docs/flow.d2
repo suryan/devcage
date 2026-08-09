@@ -1,0 +1,36 @@
+# DevCage session lifecycle (scaffold)
+# Render: d2 docs/flow.d2 docs/flow.svg
+
+direction: right
+
+start: User / agent {
+  shape: person
+}
+
+cli: "devcage run|shell\n--profile P"
+
+load: "Load profile P\n+ workspace path\n+ env config"
+
+validate: "Validate profile\nselect backend"
+
+fail: "Fail closed\n(exit non-zero)" {
+  shape: diamond
+  style.fill: "#f5c6cb"
+}
+
+plan: "Build mount plan\n+ net plan\n+ ephemeral home"
+
+start_sess: "Start session\nexec entrypoint"
+
+work: "Work inside cage\n(installs stay local)"
+
+stop: "devcage stop\n[--wipe]"
+
+end: "Session gone\nhost home clean" {
+  shape: circle
+}
+
+start -> cli -> load -> validate
+validate -> fail: "backend missing\nor policy impossible"
+validate -> plan: "ok"
+plan -> start_sess -> work -> stop -> end

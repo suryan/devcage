@@ -1,0 +1,19 @@
+/target
+local.env
+.env
+.env.*
+!.env.example
+!local.env.example
+*.swp
+.DS_Store
+
+# Coverage / llvm-cov
+/coverage/
+*.profraw
+*.profdata
+lcov.info
+/tarpaulin-report.html
+/cobertura.xml
+
+# pre-commit
+.pre-commit-cache/

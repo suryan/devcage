@@ -1,0 +1,12 @@
+# Strict, consistent formatting for DevCage.
+edition = "2021"
+max_width = 100
+tab_spaces = 4
+newline_style = "Unix"
+use_field_init_shorthand = true
+use_try_shorthand = true
+reorder_imports = true
+reorder_modules = true
+remove_nested_parens = true
+match_block_trailing_comma = true
+merge_derives = true
