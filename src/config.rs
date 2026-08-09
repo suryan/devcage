@@ -69,15 +69,9 @@ fn default_data_dir() -> PathBuf {
     PathBuf::from(".devcage-data")
 }
 
-/// Resolve workspace path: explicit override, else current directory.
+/// Resolve workspace path: explicit override, env, git root, else cwd.
 pub(crate) fn resolve_workspace(explicit: Option<PathBuf>) -> anyhow::Result<PathBuf> {
-    let path = match explicit {
-        Some(p) => p,
-        None => match std::env::var_os("DEVCAGE_WORKSPACE") {
-            Some(w) if !w.is_empty() => PathBuf::from(w),
-            _ => std::env::current_dir()?,
-        },
-    };
+    let path = explicit.unwrap_or_else(default_workspace_path);
     let path = if path.is_absolute() {
         path
     } else {
@@ -88,6 +82,28 @@ pub(crate) fn resolve_workspace(explicit: Option<PathBuf>) -> anyhow::Result<Pat
         anyhow::bail!("workspace is not a directory: {}", path.display());
     }
     Ok(path)
+}
+
+fn default_workspace_path() -> PathBuf {
+    match std::env::var_os("DEVCAGE_WORKSPACE") {
+        Some(w) if !w.is_empty() => PathBuf::from(w),
+        _ => find_git_root()
+            .or_else(|_| std::env::current_dir())
+            .unwrap_or_else(|_| PathBuf::from(".")),
+    }
+}
+
+/// Walk parents for a `.git` directory; return that root when found.
+fn find_git_root() -> anyhow::Result<PathBuf> {
+    let mut dir = std::env::current_dir()?;
+    loop {
+        if dir.join(".git").exists() {
+            return Ok(dir);
+        }
+        if !dir.pop() {
+            anyhow::bail!("no git root");
+        }
+    }
 }
 
 #[cfg(test)]

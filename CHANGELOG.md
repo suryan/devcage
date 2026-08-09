@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **MVP runtime:** container backend (Docker/Podman) for `agent` / `offline`; break-glass `host` backend.
+- `run`/`shell` `--wipe`; workspace defaults to git root when present.
 - Working CLI: `doctor`, `status`, `profile`, `run`, `shell`, `agent`, `stop [--wipe]`.
 - Session store under data dir; start banner with honest network labels; fail closed without runtime.
 - Optional RO host package cache mounts (`DEVCAGE_SHARE_PACKAGE_CACHES`).

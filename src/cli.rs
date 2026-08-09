@@ -51,9 +51,12 @@ pub(crate) enum Commands {
             env = "DEVCAGE_DEFAULT_PROFILE"
         )]
         profile: String,
-        /// Workspace directory to project into the cage (default: cwd).
+        /// Workspace directory to project into the cage (default: cwd or git root).
         #[arg(long, short = 'w', env = "DEVCAGE_WORKSPACE")]
         workspace: Option<PathBuf>,
+        /// Discard ephemeral session home after the command exits.
+        #[arg(long)]
+        wipe: bool,
         /// Command and args after `--`.
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         command: Vec<String>,
@@ -68,9 +71,12 @@ pub(crate) enum Commands {
             env = "DEVCAGE_DEFAULT_PROFILE"
         )]
         profile: String,
-        /// Workspace directory to project into the cage (default: cwd).
+        /// Workspace directory to project into the cage (default: cwd or git root).
         #[arg(long, short = 'w', env = "DEVCAGE_WORKSPACE")]
         workspace: Option<PathBuf>,
+        /// Discard ephemeral session home after the shell exits.
+        #[arg(long)]
+        wipe: bool,
     },
     /// Stop a session and optionally wipe ephemeral data.
     Stop {
@@ -119,12 +125,27 @@ mod tests {
     fn parses_run_default_profile_agent() {
         let cli = Cli::try_parse_from(["devcage", "run", "--", "echo", "hi"]).expect("parse");
         let Commands::Run {
-            profile, command, ..
+            profile,
+            command,
+            wipe,
+            ..
         } = cli.command
         else {
             unreachable!("expected Run");
         };
         assert_eq!(profile, "agent");
+        assert!(!wipe);
         assert_eq!(command, vec!["echo", "hi"]);
+    }
+
+    #[test]
+    fn parses_run_wipe() {
+        let cli = Cli::try_parse_from(["devcage", "run", "--wipe", "-p", "offline", "--", "true"])
+            .expect("parse");
+        let Commands::Run { wipe, profile, .. } = cli.command else {
+            unreachable!("expected Run");
+        };
+        assert!(wipe);
+        assert_eq!(profile, "offline");
     }
 }

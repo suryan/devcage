@@ -190,6 +190,7 @@ pub(crate) fn shell(
     cfg: &Config,
     profile: String,
     workspace: Option<std::path::PathBuf>,
+    wipe: bool,
 ) -> anyhow::Result<ExitCode> {
     run(
         cfg,
@@ -198,7 +199,7 @@ pub(crate) fn shell(
             workspace,
             command: default_shell_command(),
             tty: true,
-            wipe_after: false,
+            wipe_after: wipe,
         },
     )
 }
