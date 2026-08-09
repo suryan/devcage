@@ -2,7 +2,7 @@
 
 **Easy isolation for AI agent development** — run Grok, Claude Code, Gemini CLI (and friends) so they can edit **this project**, not your home directory or secrets. When you are done, wipe the session.
 
-> **Status:** Scaffold (Rust CLI stubs). Isolation backends are **not** implemented yet. See the [PRD](docs/product_requirements.md).
+> **Status:** **MVP** — container isolation for `agent`/`offline` (Docker/Podman); break-glass `host`. See the [PRD](docs/product_requirements.md).
 
 | | |
 |--|--|
@@ -26,11 +26,12 @@ devcage stop --wipe
 
 ```bash
 cp local.env.example local.env   # optional
-./scripts/setup-hooks.sh         # pre-commit: fmt, clippy, shellcheck, tests, coverage
+./scripts/setup-hooks.sh         # pre-commit quality gate
 ./scripts/build.sh
 cargo run -- doctor
-cargo run -- profile list
-# Planned: cargo run -- agent
+# requires Docker or Podman:
+cargo run -- run -p offline -- echo hi
+cargo run -- run -p host -- /usr/bin/true   # break-glass
 ```
 
 Quality gate (required before commit):

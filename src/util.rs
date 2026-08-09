@@ -24,8 +24,9 @@ fn path_is_executable_file(path: &Path) -> bool {
     path.is_file()
 }
 
-/// Build the not-implemented error message for scaffold commands.
+/// Build a standard "not available" style message (tests + future stubs).
 #[must_use]
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn not_implemented_message(cmd: &str, detail: Option<&str>) -> String {
     let mut msg = format!(
         "devcage {cmd}: not implemented yet (scaffold {version}). See docs/product_requirements.md and docs/development.md.",

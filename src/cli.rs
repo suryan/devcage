@@ -26,7 +26,7 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         action: ProfileCmd,
     },
-    /// Run an AI agent CLI inside a cage (happy path; not implemented yet).
+    /// Run an AI agent CLI inside a cage (happy path).
     Agent {
         /// Agent command name (default: `DEVCAGE_DEFAULT_AGENT` or `claude`).
         #[arg(env = "DEVCAGE_DEFAULT_AGENT")]
@@ -41,7 +41,7 @@ pub(crate) enum Commands {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
-    /// Run a command inside a profile (not implemented yet).
+    /// Run a command inside a profile.
     Run {
         /// Profile name: `agent` | `offline` | `host`.
         #[arg(
@@ -58,7 +58,7 @@ pub(crate) enum Commands {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         command: Vec<String>,
     },
-    /// Interactive shell inside a profile (not implemented yet).
+    /// Interactive shell inside a profile.
     Shell {
         /// Profile name: `agent` | `offline` | `host`.
         #[arg(
@@ -72,7 +72,7 @@ pub(crate) enum Commands {
         #[arg(long, short = 'w', env = "DEVCAGE_WORKSPACE")]
         workspace: Option<PathBuf>,
     },
-    /// Stop a session (not implemented yet).
+    /// Stop a session and optionally wipe ephemeral data.
     Stop {
         /// Session id (when runtime exists).
         session: Option<String>,

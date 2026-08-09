@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** Scaffold — **agent-first wedge** + closed MVP decisions. Runtime backends not implemented yet.
+**Status:** **MVP runtime implemented** — container + host backends; agent-first wedge.
 
 See also:
 
@@ -45,17 +45,18 @@ Host PATH
 
 Neither requires the other.
 
-## Module map (planned under `src/`)
+## Module map (`src/`)
 
 | Module | Responsibility |
 |--------|----------------|
-| `cli` | clap surface (present) |
-| `profile` | built-in core profiles (minimal schema in v0.1) |
-| `session` | lifecycle, metadata, wipe |
-| `backend` | trait + **container** impl first |
-| `fs` | mount plan, ephemeral home, secret denylist |
-| `net` | `none` vs full container net (allowlist later) |
-| `config` | env + config dirs (no hardcoded machine paths) |
+| `cli` | clap surface |
+| `profiles` | built-in policies (`agent` / `offline` / `host`) |
+| `plan` | mounts + `NetMode` |
+| `session` | JSON session store + ephemeral home |
+| `backend` | trait + **container** + **host** |
+| `orchestrate` | run / agent / shell / stop / doctor / status |
+| `config` | env + data dir |
+| `banner` | start summary |
 
 ## Backends
 

@@ -1,101 +1,95 @@
 # Usage
 
-**Status:** Scaffold CLI only. Isolation is **not** enforced yet. Commands below describe the **intended** UX and what the binary does today.
-
-**Product focus:** easy, secure isolation for **AI agent development** — not a general mobile/GUI sandbox platform.
+**Status:** MVP runtime — `agent` / `offline` use Docker or Podman; `host` is break-glass without container isolation.
 
 ## Install (from source)
 
 ```bash
 cp local.env.example local.env   # optional
+./scripts/setup-hooks.sh
 ./scripts/build.sh --release
 ./scripts/install.sh             # ${PREFIX:-$HOME/.local}/bin/devcage
 ```
 
-Ensure your preferred `bin` directory is on `PATH`.
+Needs **Docker or Podman** for isolated profiles. `devcage doctor` reports availability.
 
-## Happy path (intended)
-
-```bash
-# In a project directory (once isolation ships):
-devcage doctor                 # need Docker/Podman
-devcage agent                  # default profile=agent; launches default agent CLI
-devcage agent claude           # or: grok, gemini — names from PATH / env
-devcage agent --offline        # same FS isolation, network off
-devcage stop --wipe            # end session; discard ephemeral home
-```
-
-On every start (intended banner):
-
-```text
-profile: agent
-workspace: /path/to/project (rw)
-home: ephemeral
-network: full (container)    # or: none
-secrets: not mounted
-```
-
-## Commands (scaffold)
-
-| Command | Today | Intent |
-|---------|--------|--------|
-| `devcage doctor` | Probes `docker` / `podman` / `bwrap`; JSON | Environment health |
-| `devcage status` | Empty session list | Active sessions |
-| `devcage profile list` | Core + roadmap profiles (JSON) | Discover profiles |
-| `devcage profile show <name>` | Placeholder JSON | Inspect one profile |
-| `devcage agent [name]` | Errors: not implemented | **Happy path** — run agent in cage |
-| `devcage run -p <profile> -- <cmd…>` | Errors: not implemented | Any command in cage |
-| `devcage shell -p <profile>` | Errors: not implemented | Interactive shell in cage |
-| `devcage stop [--wipe] [session]` | Errors: not implemented | Tear down session |
-
-Examples today:
+## Happy path
 
 ```bash
 devcage doctor
-devcage profile list
-
-# Planned:
-# devcage agent
-# devcage agent --offline
-# devcage run -p offline -- cargo test
-# devcage stop --wipe
+# with Docker/Podman:
+devcage run -p offline -- echo hi          # no network
+devcage run -p agent -- sh -c 'uname -a'   # full container net
+devcage shell -p offline
+devcage agent                              # runs $DEVCAGE_DEFAULT_AGENT in container image
+devcage agent --offline claude
+devcage stop --wipe                        # last/running session
 ```
 
-## Core profiles (v0.1)
+### Host break-glass (no real isolation)
 
-| Profile | Network | FS | Intent |
-|---------|---------|-----|--------|
-| **`agent`** | Full container net (**labeled honestly**, not “allowlist”) | Project RW; ephemeral home; no host secrets | **Default** daily AI coding |
-| **`offline`** | **None** (enforced) | Same FS isolation | Review / local-only without exfil |
-| **`host`** | Unrestricted / near-host | Break-glass | Explicit escape hatch; loud warnings |
+```bash
+devcage run -p host -- /usr/bin/true
+```
 
-Optional later: `untrusted` for one-off package experiments (stricter, wipe-oriented).
+## Start banner
 
-**Mobile / GUI profiles** are phase 3 only — see [workloads-gui-mobile.md](./workloads-gui-mobile.md). Until then: cage the agent; keep Xcode / Studio / emulators on the host.
+```text
+devcage session
+  id:        dc-…
+  profile:   offline
+  backend:   docker
+  image:     docker.io/library/alpine:3.20
+  workspace: /path/to/project (rw)
+  home:      ephemeral (…)
+  network:   none (enforced)
+  secrets:   not mounted
+```
+
+## Profiles
+
+| Profile | Backend | Network | Notes |
+|---------|---------|---------|--------|
+| **`agent`** | container | full (honest label) | Default; needs image with your tools/agent |
+| **`offline`** | container | **none** | Enforced via `--network none` |
+| **`host`** | host process | unrestricted | Break-glass; ephemeral `$HOME` only |
+
+## Commands
+
+| Command | Behavior |
+|---------|----------|
+| `devcage doctor` | JSON: runtimes, image, data dir |
+| `devcage status` | JSON session list |
+| `devcage profile list\|show` | Built-in profiles |
+| `devcage run -p <profile> -- <cmd…>` | Run command in cage |
+| `devcage shell -p <profile>` | `/bin/sh -l` in cage |
+| `devcage agent [name] [--offline]` | Happy path agent launch |
+| `devcage stop [--wipe] [id]` | Kill container if any; wipe data |
 
 ## Configuration
 
-| Variable / file | Purpose |
-|-----------------|---------|
-| `local.env` | Local overrides (gitignored) |
-| `DEVCAGE_WORKSPACE` | Workspace into the cage (also `--workspace`) |
-| `DEVCAGE_DEFAULT_PROFILE` | Default profile (`agent`) |
-| `DEVCAGE_DEFAULT_AGENT` | Default agent command name (`claude`, `grok`, …) |
-| `DEVCAGE_BACKEND` | `auto` \| `container` (MVP); `bwrap` later |
-| `RUST_LOG` | Tracing filter |
+| Variable | Purpose |
+|----------|---------|
+| `DEVCAGE_WORKSPACE` | Project path (default: cwd) |
+| `DEVCAGE_DEFAULT_PROFILE` | Default for run/shell (`agent`) |
+| `DEVCAGE_DEFAULT_AGENT` | Agent binary name in image (`claude`) |
+| `DEVCAGE_CONTAINER_RUNTIME` | `docker` or `podman` |
+| `DEVCAGE_CONTAINER_IMAGE` | Image (default Alpine 3.20) |
+| `DEVCAGE_DATA_DIR` | Sessions + ephemeral homes |
+| `DEVCAGE_SHARE_PACKAGE_CACHES` | `1` = RO host npm/uv/pip caches |
+| `RUST_LOG` | Tracing |
 
-Optional minimal project config later: `.devcage.toml` with `default_profile` / `agent` only — not a full profile DSL in v0.1.
+### Important: macOS agents
+
+Host-native agent binaries (Darwin) **do not** run inside a Linux container. Point `DEVCAGE_CONTAINER_IMAGE` at an image that **contains** the agent CLI (or use Linux tools only). Profile `host` runs the host binary with little isolation.
 
 ## Composition with pkg-guard (optional)
 
 1. Host PATH: pkg-guard shims for `uvx` / `npx`
-2. Start agents via `devcage agent`
+2. Workloads via `devcage run|agent`
 
-DevCage does **not** require pkg-guard.
+## Quality gate
 
-## Exit codes (scaffold)
-
-| Code | Meaning |
-|------|---------|
-| 0 | Success (`doctor`, `status`, `profile`) |
-| non-zero | Error, including “not implemented yet” for `agent` / `run` / `shell` / `stop` |
+```bash
+./scripts/check.sh
+```

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **MVP runtime:** container backend (Docker/Podman) for `agent` / `offline`; break-glass `host` backend.
+- Working CLI: `doctor`, `status`, `profile`, `run`, `shell`, `agent`, `stop [--wipe]`.
+- Session store under data dir; start banner with honest network labels; fail closed without runtime.
+- Optional RO host package cache mounts (`DEVCAGE_SHARE_PACKAGE_CACHES`).
 - Project quality gate: strict Clippy (pedantic/nursery + selected restriction), `rustfmt`, ShellCheck.
 - Coverage gate via `cargo llvm-cov` (`scripts/coverage.sh`, default ≥ 80% lines).
 - Pre-commit hooks (`./scripts/setup-hooks.sh`, `.pre-commit-config.yaml`).
