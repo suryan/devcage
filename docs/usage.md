@@ -59,18 +59,22 @@ devcage session
 | **`agent-host`** | host | host | Host-restricted; ephemeral HOME + env scrub |
 | **`offline`** | container | **none** | Hardened; wipe by default |
 | **`untrusted`** | container | **none** | Hardened; always wipe; no host caches |
+| **`net-allowlist`** | container | full + advisory list | Sets `DEVCAGE_NET_ALLOWLIST` env (not kernel-enforced yet) |
 | **`host`** | host process | unrestricted | Break-glass; ephemeral `$HOME` only |
 
 ## Commands
 
 | Command | Behavior |
 |---------|----------|
-| `devcage doctor` | JSON: runtimes, image, data dir |
+| `devcage doctor` | JSON: runtimes, image, data dir, readiness |
 | `devcage status` | JSON session list |
 | `devcage profile list\|show` | Built-in profiles |
 | `devcage run -p <profile> -- <cmd…>` | Run command in cage |
 | `devcage shell -p <profile>` | `/bin/sh -l` in cage |
-| `devcage agent [name] [--offline]` | Happy path agent launch |
+| `devcage agent [name] [--offline] [--host-restricted]` | Happy path agent launch |
+| `devcage export <id> <src> <dest>` | Promote artifact from session |
+| `devcage logs <id>` | Session event log (JSON lines) |
+| `devcage init-allowlist [path]` | Write starter allowlist file |
 | `devcage stop [--wipe] [id]` | Kill container if any; wipe data |
 | `devcage verify` | Isolation smoke checks (JSON) |
 | `devcage pull` | Pull configured container image |

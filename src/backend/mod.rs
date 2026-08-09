@@ -2,6 +2,8 @@
 
 mod container;
 mod host;
+#[cfg(target_os = "macos")]
+mod seatbelt;
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -50,17 +52,43 @@ pub(crate) trait Backend {
 }
 
 /// Pick a backend implementation for a plan.
+///
+/// For host profiles on macOS, prefer Seatbelt when `sandbox-exec` exists and
+/// the profile is `agent-host` (host-restricted). Full `host` break-glass stays plain.
 pub(crate) fn select_backend(
     kind: BackendKind,
     preferred_runtime: Option<&str>,
+    profile: &str,
 ) -> anyhow::Result<Box<dyn Backend>> {
     match kind {
         BackendKind::Container => {
             let rt = detect_container_runtime(preferred_runtime)?;
             Ok(Box::new(ContainerBackend::new(rt)))
         },
-        BackendKind::Host => Ok(Box::new(HostBackend)),
+        BackendKind::Host => {
+            #[cfg(target_os = "macos")]
+            {
+                // Opt-in: DEVCAGE_SEATBELT=1 — sandbox-exec profiles are brittle for real agents.
+                if profile == "agent-host" && seatbelt_enabled() {
+                    let sb = seatbelt::SeatbeltHostBackend;
+                    if sb.available() {
+                        return Ok(Box::new(sb));
+                    }
+                }
+            }
+            let _ = profile;
+            Ok(Box::new(HostBackend))
+        },
     }
+}
+
+fn seatbelt_enabled() -> bool {
+    std::env::var("DEVCAGE_SEATBELT").ok().is_some_and(|v| {
+        matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    })
 }
 
 /// Helper used by backends to run a command inheriting stdio.

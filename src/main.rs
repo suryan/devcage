@@ -20,6 +20,8 @@ mod backend;
 mod banner;
 mod cli;
 mod config;
+mod events;
+mod net_policy;
 mod orchestrate;
 mod plan;
 mod profiles;
@@ -110,6 +112,14 @@ fn dispatch(cfg: &Config, cli: Cli) -> anyhow::Result<ExitCode> {
             dest,
         } => {
             orchestrate::export(cfg, &session, &source, &dest)?;
+            Ok(ExitCode::SUCCESS)
+        },
+        Commands::Logs { session } => {
+            orchestrate::logs(cfg, &session)?;
+            Ok(ExitCode::SUCCESS)
+        },
+        Commands::InitAllowlist { path } => {
+            orchestrate::init_allowlist(&path)?;
             Ok(ExitCode::SUCCESS)
         },
         Commands::Verify => orchestrate::verify(cfg),

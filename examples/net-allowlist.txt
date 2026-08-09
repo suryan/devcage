@@ -1,0 +1,18 @@
+# DevCage net allowlist example (one host per line)
+# Copy or: devcage init-allowlist
+# Set: DEVCAGE_NET_ALLOWLIST_FILE=.devcage/net-allowlist.txt
+# Profile: devcage run -p net-allowlist -- ...
+# NOTE: list is currently ADVISORY (env DEVCAGE_NET_ALLOWLIST); kernel egress filter is future work.
+
+api.openai.com
+api.anthropic.com
+api.x.ai
+generativelanguage.googleapis.com
+github.com
+api.github.com
+registry.npmjs.org
+pypi.org
+files.pythonhosted.org
+crates.io
+static.crates.io
+index.crates.io

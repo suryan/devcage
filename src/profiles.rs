@@ -64,14 +64,15 @@ pub(crate) const CORE_PROFILES: &[BuiltinProfile] = &[
         summary: "Break-glass near-host access (explicit only; loud warnings)",
         tier: "core",
     },
+    BuiltinProfile {
+        name: "net-allowlist",
+        summary: "Container with domain list attached as DEVCAGE_NET_ALLOWLIST (advisory until phase-2 enforcement)",
+        tier: "core",
+    },
 ];
 
-/// Roadmap profile names (not implemented).
-pub(crate) const ROADMAP_PROFILES: &[BuiltinProfile] = &[BuiltinProfile {
-    name: "net-allowlist",
-    summary: "Future egress policy — not claimed until enforceable",
-    tier: "phase2",
-}];
+/// Reserved names not yet implemented.
+pub(crate) const ROADMAP_PROFILES: &[BuiltinProfile] = &[];
 
 /// Resolve policy for a profile name.
 pub(crate) fn resolve_policy(name: &str) -> anyhow::Result<ProfilePolicy> {
@@ -126,11 +127,18 @@ pub(crate) fn resolve_policy(name: &str) -> anyhow::Result<ProfilePolicy> {
             harden_container: false,
             implemented: true,
         }),
-        "net-allowlist" => anyhow::bail!(
-            "profile `net-allowlist` is reserved until egress allowlisting is enforceable"
-        ),
+        "net-allowlist" => Ok(ProfilePolicy {
+            name: "net-allowlist",
+            backend: BackendKind::Container,
+            net: NetMode::Allowlist,
+            break_glass: false,
+            always_wipe: false,
+            allow_package_caches: true,
+            harden_container: false,
+            implemented: true,
+        }),
         other => anyhow::bail!(
-            "unknown profile `{other}`; core profiles: agent, agent-host, offline, untrusted, host"
+            "unknown profile `{other}`; core: agent, agent-host, offline, untrusted, net-allowlist, host"
         ),
     }
 }
@@ -160,7 +168,7 @@ pub(crate) fn profile_list_json() -> Value {
     }
     json!({
         "profiles": profiles,
-        "message": "Core: agent, agent-host, offline, untrusted, host. net-allowlist is phase 2.",
+        "message": "Core: agent, agent-host, offline, untrusted, net-allowlist (advisory), host.",
     })
 }
 

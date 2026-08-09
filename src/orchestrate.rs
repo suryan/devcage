@@ -34,8 +34,14 @@ pub(crate) fn doctor(cfg: &Config) -> anyhow::Result<()> {
         "status": "mvp",
         "readiness": readiness,
         "focus": "AI agent development isolation",
-        "core_profiles": ["agent", "agent-host", "offline", "untrusted", "host"],
+        "core_profiles": ["agent", "agent-host", "offline", "untrusted", "net-allowlist", "host"],
         "agent_host_fallback": cfg.agent_host_fallback,
+        "net_allowlist_file": cfg.net_allowlist_file,
+        "seatbelt": {
+            "planned": true,
+            "macos_agent_host": cfg!(target_os = "macos"),
+            "sandbox_exec": which("sandbox-exec"),
+        },
         "backends": {
             "container": {
                 "mvp": true,
@@ -265,13 +271,18 @@ pub(crate) struct RunParams {
 }
 
 /// Execute a command in a profile; returns process exit code.
+#[allow(clippy::too_many_lines)]
 pub(crate) fn run(cfg: &Config, params: RunParams) -> anyhow::Result<ExitCode> {
     let policy = resolve_policy(&params.profile)?;
     if params.command.is_empty() {
         anyhow::bail!("no command specified; example: devcage run -p offline -- echo hi");
     }
     // Fail closed before creating session state.
-    let backend = select_backend(policy.backend, cfg.container_runtime.as_deref())?;
+    let backend = select_backend(
+        policy.backend,
+        cfg.container_runtime.as_deref(),
+        policy.name,
+    )?;
     if !backend.available() {
         anyhow::bail!(
             "backend `{}` is not available; run `devcage doctor`",
@@ -281,6 +292,23 @@ pub(crate) fn run(cfg: &Config, params: RunParams) -> anyhow::Result<ExitCode> {
 
     let workspace = resolve_workspace(params.workspace)?;
     ensure_workspace_safe(&workspace)?;
+
+    let mut env_extras = Vec::new();
+    if policy.net == crate::plan::NetMode::Allowlist {
+        let al = load_allowlist(cfg)?;
+        if al.hosts.is_empty() {
+            anyhow::bail!(
+                "profile net-allowlist requires a non-empty allowlist file \
+                 (set DEVCAGE_NET_ALLOWLIST_FILE); see examples/net-allowlist.txt"
+            );
+        }
+        eprintln!(
+            "devcage: net-allowlist advisory ({} hosts) — not kernel-enforced yet",
+            al.hosts.len()
+        );
+        env_extras.push(("DEVCAGE_NET_ALLOWLIST".to_owned(), al.joined()));
+        env_extras.push(("DEVCAGE_NET_ENFORCEMENT".to_owned(), "advisory".to_owned()));
+    }
 
     let store = SessionStore::new(&cfg.data_dir);
     store.ensure()?;
@@ -297,6 +325,7 @@ pub(crate) fn run(cfg: &Config, params: RunParams) -> anyhow::Result<ExitCode> {
         &caches,
         policy.break_glass,
         policy.harden_container,
+        env_extras,
     );
     let container_name = match policy.backend {
         BackendKind::Container => Some(format!("devcage-{id}")),
@@ -311,6 +340,13 @@ pub(crate) fn run(cfg: &Config, params: RunParams) -> anyhow::Result<ExitCode> {
         container_name,
     );
     store.save(&session)?;
+    let _ = crate::events::append_event(
+        &cfg.data_dir,
+        &id,
+        "start",
+        format!("profile={} backend={}", policy.name, backend.name()),
+        None,
+    );
 
     let image = match policy.backend {
         BackendKind::Container => Some(cfg.container_image.as_str()),
@@ -329,6 +365,13 @@ pub(crate) fn run(cfg: &Config, params: RunParams) -> anyhow::Result<ExitCode> {
     session.status = SessionStatus::Exited;
     session.exit_code = Some(outcome.as_ref().map_or(1, |o| o.exit_code));
     store.save(&session)?;
+    let _ = crate::events::append_event(
+        &cfg.data_dir,
+        &id,
+        "exit",
+        format!("code={}", session.exit_code.unwrap_or(1)),
+        None,
+    );
 
     let wipe = if params.keep {
         false
@@ -343,6 +386,16 @@ pub(crate) fn run(cfg: &Config, params: RunParams) -> anyhow::Result<ExitCode> {
 
     let code = outcome?.exit_code;
     Ok(exit_code_from_i32(code))
+}
+
+fn load_allowlist(cfg: &Config) -> anyhow::Result<crate::net_policy::NetAllowlist> {
+    let Some(path) = cfg.net_allowlist_file.as_ref() else {
+        // Ship default embedded example hosts if no file set.
+        return Ok(crate::net_policy::NetAllowlist::parse(
+            crate::net_policy::default_allowlist_example(),
+        ));
+    };
+    crate::net_policy::NetAllowlist::load_file(path)
 }
 
 /// `devcage agent` happy path.
@@ -393,6 +446,30 @@ pub(crate) fn agent(
 
 fn container_runtime_available(cfg: &Config) -> bool {
     detect_container_runtime(cfg.container_runtime.as_deref()).is_ok()
+}
+
+/// Print session event log (JSON lines).
+pub(crate) fn logs(cfg: &Config, session_id: &str) -> anyhow::Result<()> {
+    let text = crate::events::read_events(&cfg.data_dir, session_id)?;
+    if text.is_empty() {
+        eprintln!("devcage: no events for session {session_id}");
+        return Ok(());
+    }
+    print!("{text}");
+    Ok(())
+}
+
+/// Write the default net-allowlist example to a path.
+pub(crate) fn init_allowlist(path: &std::path::Path) -> anyhow::Result<()> {
+    if path.exists() {
+        anyhow::bail!("refusing to overwrite existing file: {}", path.display());
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, crate::net_policy::default_allowlist_example())?;
+    eprintln!("devcage: wrote allowlist example {}", path.display());
+    Ok(())
 }
 
 /// Copy a file/dir from a session home (or under workspace) to a host destination.
@@ -512,7 +589,7 @@ pub(crate) fn stop(cfg: &Config, session_id: Option<String>, wipe: bool) -> anyh
         "host" => BackendKind::Host,
         _ => BackendKind::Container,
     };
-    let backend = select_backend(kind, cfg.container_runtime.as_deref());
+    let backend = select_backend(kind, cfg.container_runtime.as_deref(), rec.profile.as_str());
     if let Ok(backend) = backend {
         backend.stop(&rec)?;
     }
@@ -678,6 +755,67 @@ mod tests {
         )
         .expect("agent");
         assert_eq!(code, ExitCode::SUCCESS);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn logs_and_init_allowlist() {
+        use super::{init_allowlist, logs, run, RunParams};
+        let (cfg, dir) = temp_cfg();
+        let code = run(
+            &cfg,
+            RunParams {
+                profile: "agent-host".to_owned(),
+                workspace: Some(std::env::current_dir().expect("cwd")),
+                command: vec!["/usr/bin/true".to_owned()],
+                tty: false,
+                wipe_after: false,
+                keep: true,
+            },
+        )
+        .expect("run");
+        assert_eq!(code, ExitCode::SUCCESS);
+        let store = SessionStore::new(&cfg.data_dir);
+        let sessions = store.list().expect("list");
+        let id = sessions[0].id.clone();
+        logs(&cfg, &id).expect("logs");
+        let al = dir.join("allow.txt");
+        init_allowlist(&al).expect("init");
+        assert!(al.is_file());
+        assert!(init_allowlist(&al).is_err());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn load_allowlist_embedded_default() {
+        use super::load_allowlist;
+        let (cfg, dir) = temp_cfg();
+        let al = load_allowlist(&cfg).expect("load");
+        assert!(!al.hosts.is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn net_allowlist_profile_requires_hosts() {
+        use super::{run, RunParams};
+        let (mut cfg, dir) = temp_cfg();
+        // Empty custom file should fail
+        let empty = dir.join("empty.txt");
+        std::fs::write(&empty, "# only comments\n").expect("write");
+        cfg.net_allowlist_file = Some(empty);
+        let err = run(
+            &cfg,
+            RunParams {
+                profile: "net-allowlist".to_owned(),
+                workspace: Some(std::env::current_dir().expect("cwd")),
+                command: vec!["/usr/bin/true".to_owned()],
+                tty: false,
+                wipe_after: true,
+                keep: false,
+            },
+        )
+        .expect_err("empty allowlist");
+        assert!(err.to_string().contains("allowlist") || err.to_string().contains("container"));
         let _ = std::fs::remove_dir_all(dir);
     }
 }

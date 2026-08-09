@@ -22,11 +22,21 @@ pub(crate) fn print_start_banner(
     eprintln!("  network:   {}", plan.net.label());
     eprintln!("  secrets:   not mounted");
     if plan.profile == "agent-host" {
-        eprintln!(
-            "  WARNING:   host-restricted mode — ephemeral HOME + env scrub only; process runs on the host OS (not a container)"
-        );
+        if backend_name == "seatbelt" {
+            eprintln!(
+                "  WARNING:   host-restricted + Seatbelt (sandbox-exec) — stronger than plain host, not a container"
+            );
+        } else {
+            eprintln!(
+                "  WARNING:   host-restricted mode — ephemeral HOME + env scrub only; process runs on the host OS (not a container)"
+            );
+        }
     } else if plan.break_glass {
         eprintln!("  WARNING:   break-glass host profile — little to no isolation");
+    } else if plan.net.label().contains("advisory") {
+        eprintln!(
+            "  WARNING:   net-allowlist is advisory (env only) — full container network still available"
+        );
     } else {
         // Container / non-break-glass profiles: no extra warning.
     }
@@ -56,6 +66,7 @@ mod tests {
             &[],
             false,
             true,
+            vec![],
         );
         let session = SessionRecord::new(
             "dc-test".to_owned(),

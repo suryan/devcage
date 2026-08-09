@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-09
+
+### Notes
+
+seatbelt opt-in, events/logs, net-allowlist advisory
+
+### Changed
+
+- Version bump to 0.5.0 (see releases/v0.5.0.md).
+
+
+### Added
+
+- Experimental macOS **Seatbelt** path for `agent-host` (`DEVCAGE_SEATBELT=1`).
+- Session **event logs** (`events.jsonl`) + `devcage logs <session>`.
+- **`net-allowlist` profile** (advisory): loads host list, sets `DEVCAGE_NET_ALLOWLIST` env.
+- `devcage init-allowlist` + `examples/net-allowlist.txt`.
+
 ## [0.4.0] - 2026-08-09
 
 ### Notes

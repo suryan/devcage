@@ -141,8 +141,8 @@ pub(crate) fn build_docker_args(
             args.push("--network".to_owned());
             args.push("none".to_owned());
         },
-        NetMode::Full | NetMode::Host => {
-            // Full container network (bridge/default). Host net not used for container profile.
+        NetMode::Full | NetMode::Allowlist | NetMode::Host => {
+            // Full container network (bridge/default). Allowlist is advisory via env today.
         },
     }
     if plan.harden_container {
@@ -178,6 +178,10 @@ pub(crate) fn build_docker_args(
     args.push(plan.workspace_in_cage.display().to_string());
     args.push("-e".to_owned());
     args.push(format!("HOME={}", plan.home_in_cage.display()));
+    for (k, v) in &plan.env_extras {
+        args.push("-e".to_owned());
+        args.push(format!("{k}={v}"));
+    }
     args.push("--".to_owned());
     args.push(image.to_owned());
     for c in command {
@@ -208,6 +212,7 @@ mod tests {
             &[],
             false,
             true,
+            vec![],
         );
         let args = build_docker_args(
             Some("devcage-test"),
@@ -241,6 +246,7 @@ mod tests {
             &[],
             false,
             false,
+            vec![],
         );
         let args = build_docker_args(None, &plan, "alpine:3.20", &["sh".to_owned()], true);
         assert!(!args

@@ -10,7 +10,7 @@ use crate::session::SessionRecord;
 pub(crate) struct HostBackend;
 
 /// Env keys cleared for host-profile children (defense in depth only).
-const SENSITIVE_ENV: &[&str] = &[
+pub(crate) const SENSITIVE_ENV: &[&str] = &[
     "AWS_SECRET_ACCESS_KEY",
     "AWS_ACCESS_KEY_ID",
     "AWS_SESSION_TOKEN",
@@ -48,7 +48,10 @@ impl Backend for HostBackend {
         }
         // Best-effort: drop common secret env vars from the child (not a real sandbox).
         for key in SENSITIVE_ENV {
-            cmd.env_remove(key);
+            cmd.env_remove(*key);
+        }
+        for (k, v) in &req.plan.env_extras {
+            cmd.env(k, v);
         }
         run_command(cmd)
     }

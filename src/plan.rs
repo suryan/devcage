@@ -9,6 +9,8 @@ pub(crate) enum NetMode {
     None,
     /// Full container network (honest label for `agent`).
     Full,
+    /// Domain allowlist attached as env (enforcement phased — advisory until proxy/net filter).
+    Allowlist,
     /// Unrestricted host network / host process (`host` profile).
     Host,
 }
@@ -20,6 +22,7 @@ impl NetMode {
         match self {
             Self::None => "none (enforced)",
             Self::Full => "full (container) — not an allowlist",
+            Self::Allowlist => "allowlist (advisory — not kernel-enforced yet)",
             Self::Host => "host (unrestricted)",
         }
     }
@@ -68,6 +71,8 @@ pub(crate) struct IsolationPlan {
     pub break_glass: bool,
     /// Apply container hardening flags (cap-drop, no-new-privileges).
     pub harden_container: bool,
+    /// Extra environment variables for the child (e.g. allowlist).
+    pub env_extras: Vec<(String, String)>,
 }
 
 /// Build mount list for the workspace + home + optional caches.
@@ -82,6 +87,7 @@ pub(crate) fn build_plan(
     package_cache_sources: &[PathBuf],
     break_glass: bool,
     harden_container: bool,
+    env_extras: Vec<(String, String)>,
 ) -> IsolationPlan {
     let mut extra_mounts = Vec::new();
     for (i, src) in package_cache_sources.iter().enumerate() {
@@ -104,6 +110,7 @@ pub(crate) fn build_plan(
         extra_mounts,
         break_glass,
         harden_container,
+        env_extras,
     }
 }
 
@@ -197,6 +204,7 @@ mod tests {
             std::slice::from_ref(&dir),
             false,
             false,
+            vec![],
         );
         assert_eq!(plan.extra_mounts.len(), 1);
         assert!(plan.extra_mounts[0].read_only);

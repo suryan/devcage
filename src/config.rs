@@ -17,6 +17,8 @@ pub(crate) struct Config {
     pub share_package_caches: bool,
     /// When true, `devcage agent` falls back to `agent-host` if no container runtime.
     pub agent_host_fallback: bool,
+    /// Optional path to net allowlist file for `net-allowlist` profile.
+    pub net_allowlist_file: Option<PathBuf>,
 }
 
 impl Config {
@@ -31,6 +33,7 @@ impl Config {
             default_agent: "claude".to_owned(),
             share_package_caches: false,
             agent_host_fallback: false,
+            net_allowlist_file: None,
         }
     }
 
@@ -49,6 +52,7 @@ impl Config {
         let share_package_caches = env_truthy("DEVCAGE_SHARE_PACKAGE_CACHES");
         // Default true: macOS users without Docker can still run host agents.
         let agent_host_fallback = !env_falsy("DEVCAGE_AGENT_HOST_FALLBACK");
+        let net_allowlist_file = env_path("DEVCAGE_NET_ALLOWLIST_FILE");
         Self {
             data_dir,
             container_runtime,
@@ -56,7 +60,9 @@ impl Config {
             default_agent,
             share_package_caches,
             agent_host_fallback,
+            net_allowlist_file,
         }
+        // Seatbelt: DEVCAGE_SEATBELT=1 enables sandbox-exec for agent-host on macOS.
     }
 }
 

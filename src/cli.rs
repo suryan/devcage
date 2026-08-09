@@ -104,6 +104,17 @@ pub(crate) enum Commands {
         /// Destination path on the host.
         dest: PathBuf,
     },
+    /// Show session event log (JSON lines).
+    Logs {
+        /// Session id.
+        session: String,
+    },
+    /// Write a starter net-allowlist file.
+    InitAllowlist {
+        /// Output path (e.g. .devcage/net-allowlist.txt).
+        #[arg(default_value = ".devcage/net-allowlist.txt")]
+        path: PathBuf,
+    },
     /// Isolation smoke checks (workspace safety, runtime, optional container probe).
     Verify,
     /// Pull the configured container image.
