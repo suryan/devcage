@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Quiet `docker kill` when container already removed (`--rm`).
+- Smoke tests adapt when Docker/Colima is present.
+
+### Added
+
+- Container e2e tests (`tests/container_e2e.rs`) — verified offline network block + agent net.
+
 ## [0.5.0] - 2026-08-09
 
 ### Notes
@@ -16,7 +25,6 @@ seatbelt opt-in, events/logs, net-allowlist advisory
 ### Changed
 
 - Version bump to 0.5.0 (see releases/v0.5.0.md).
-
 
 ### Added
 

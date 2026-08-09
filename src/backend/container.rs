@@ -84,9 +84,11 @@ impl Backend for ContainerBackend {
         if !self.available() {
             return Ok(());
         }
-        // Best-effort kill; ignore failures if already exited.
+        // Best-effort kill; ignore failures if already exited/--rm cleaned up.
         let _ = Command::new(self.runtime.bin())
             .args(["kill", name])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
             .status();
         Ok(())
     }

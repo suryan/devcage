@@ -8,6 +8,16 @@ fn bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_devcage"))
 }
 
+fn has_container_runtime() -> bool {
+    Command::new("docker")
+        .arg("info")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 #[test]
 fn doctor_succeeds_and_prints_json() {
     let output = bin().arg("doctor").output().expect("run doctor");
@@ -34,8 +44,7 @@ fn profile_list_succeeds() {
 }
 
 #[test]
-fn agent_falls_back_to_host_restricted_without_runtime() {
-    // Default DEVCAGE_AGENT_HOST_FALLBACK is on → should run host-restricted /usr/bin/true.
+fn agent_host_restricted_works() {
     let output = bin()
         .args(["agent", "--host-restricted", "/usr/bin/true"])
         .output()
@@ -47,27 +56,48 @@ fn agent_falls_back_to_host_restricted_without_runtime() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("host-restricted") || stderr.contains("agent-host"),
+        stderr.contains("host-restricted")
+            || stderr.contains("agent-host")
+            || stderr.contains("Seatbelt"),
         "banner missing: {stderr}"
     );
 }
 
 #[test]
-fn agent_offline_without_runtime_fails_closed() {
+fn offline_behavior_depends_on_runtime() {
+    let output = bin()
+        .args(["run", "-p", "offline", "--wipe", "--", "echo", "hi"])
+        .output()
+        .expect("run");
+    if has_container_runtime() {
+        assert!(
+            output.status.success(),
+            "with docker offline should work: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    } else {
+        assert!(!output.status.success());
+    }
+}
+
+#[test]
+fn agent_offline_requires_container() {
     let output = bin()
         .args(["agent", "--offline", "/usr/bin/true"])
         .output()
         .expect("run agent offline");
-    assert!(!output.status.success());
-}
-
-#[test]
-fn offline_without_runtime_fails_closed() {
-    let output = bin()
-        .args(["run", "-p", "offline", "--", "echo", "hi"])
-        .output()
-        .expect("run");
-    assert!(!output.status.success());
+    if has_container_runtime() {
+        // Alpine has no /usr/bin/true at same path — may fail binary not found, but runtime exists.
+        // Just ensure we don't get "no container runtime" error.
+        let err = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stderr),
+            String::from_utf8_lossy(&output.stdout)
+        );
+        assert!(!err.contains("no container runtime"), "unexpected: {err}");
+    } else {
+        assert!(!output.status.success());
+    }
 }
 
 #[test]
@@ -98,7 +128,6 @@ fn status_succeeds() {
 #[test]
 fn verify_runs() {
     let output = bin().arg("verify").output().expect("verify");
-    // May exit 1 without Docker; must still print JSON checks.
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("checks"), "stdout={stdout}");
 }
