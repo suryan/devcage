@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-09
+
+### Notes
+
+MVP: container isolation for agent/offline, host break-glass, quality gates
+
+### Changed
+
+- Version bump to 0.2.0 (see releases/v0.2.0.md).
+
+
 ### Added
 
 - **MVP runtime:** container backend (Docker/Podman) for `agent` / `offline`; break-glass `host` backend.
