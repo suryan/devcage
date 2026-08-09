@@ -10,7 +10,7 @@ use crate::util::which;
 
 /// Detected container CLI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ContainerRuntime {
+pub enum ContainerRuntime {
     /// Docker CLI.
     Docker,
     /// Podman CLI.
@@ -19,7 +19,7 @@ pub(crate) enum ContainerRuntime {
 
 impl ContainerRuntime {
     #[must_use]
-    pub(crate) const fn bin(self) -> &'static str {
+    pub const fn bin(self) -> &'static str {
         match self {
             Self::Docker => "docker",
             Self::Podman => "podman",
@@ -29,13 +29,13 @@ impl ContainerRuntime {
 
 /// Container isolation backend.
 #[derive(Debug, Clone)]
-pub(crate) struct ContainerBackend {
+pub struct ContainerBackend {
     runtime: ContainerRuntime,
 }
 
 impl ContainerBackend {
     #[must_use]
-    pub(crate) const fn new(runtime: ContainerRuntime) -> Self {
+    pub const fn new(runtime: ContainerRuntime) -> Self {
         Self { runtime }
     }
 }
@@ -95,9 +95,7 @@ impl Backend for ContainerBackend {
 }
 
 /// Detect docker/podman. Prefer explicit override, then podman, then docker.
-pub(crate) fn detect_container_runtime(
-    preferred: Option<&str>,
-) -> anyhow::Result<ContainerRuntime> {
+pub fn detect_container_runtime(preferred: Option<&str>) -> anyhow::Result<ContainerRuntime> {
     if let Some(p) = preferred {
         return match p {
             "docker" if which("docker") => Ok(ContainerRuntime::Docker),
@@ -123,7 +121,7 @@ pub(crate) fn detect_container_runtime(
 
 /// Build `docker run …` argv after the binary name.
 #[must_use]
-pub(crate) fn build_docker_args(
+pub fn build_docker_args(
     container_name: Option<&str>,
     plan: &IsolationPlan,
     image: &str,
@@ -200,22 +198,22 @@ fn path_for_mount(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::{build_docker_args, detect_container_runtime, ContainerRuntime};
-    use crate::plan::{build_plan, BackendKind, NetMode};
+    use crate::plan::{build_plan, BackendKind, NetMode, PlanRequest};
     use std::path::PathBuf;
 
     #[test]
     fn offline_plan_includes_network_none() {
-        let plan = build_plan(
-            "offline",
-            BackendKind::Container,
-            NetMode::None,
-            PathBuf::from("/proj"),
-            PathBuf::from("/tmp/home"),
-            &[],
-            false,
-            true,
-            vec![],
-        );
+        let plan = build_plan(PlanRequest {
+            profile: "offline".to_owned(),
+            backend: BackendKind::Container,
+            net: NetMode::None,
+            workspace: PathBuf::from("/proj"),
+            ephemeral_home: PathBuf::from("/tmp/home"),
+            package_cache_sources: vec![],
+            break_glass: false,
+            harden_container: true,
+            env_extras: vec![],
+        });
         let args = build_docker_args(
             Some("devcage-test"),
             &plan,
@@ -239,17 +237,17 @@ mod tests {
 
     #[test]
     fn agent_plan_does_not_force_network_none() {
-        let plan = build_plan(
-            "agent",
-            BackendKind::Container,
-            NetMode::Full,
-            PathBuf::from("/proj"),
-            PathBuf::from("/tmp/home"),
-            &[],
-            false,
-            false,
-            vec![],
-        );
+        let plan = build_plan(PlanRequest {
+            profile: "agent".to_owned(),
+            backend: BackendKind::Container,
+            net: NetMode::Full,
+            workspace: PathBuf::from("/proj"),
+            ephemeral_home: PathBuf::from("/tmp/home"),
+            package_cache_sources: vec![],
+            break_glass: false,
+            harden_container: false,
+            env_extras: vec![],
+        });
         let args = build_docker_args(None, &plan, "alpine:3.20", &["sh".to_owned()], true);
         assert!(!args
             .windows(2)

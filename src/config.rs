@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 /// Resolved `DevCage` configuration.
 #[derive(Debug, Clone)]
-pub(crate) struct Config {
+pub struct Config {
     /// Directory for session metadata and ephemeral homes.
     pub data_dir: PathBuf,
     /// Preferred container runtime binary name (`docker` / `podman`).
@@ -25,7 +25,7 @@ impl Config {
     /// Construct a config for tests (no env required).
     #[cfg(test)]
     #[must_use]
-    pub(crate) fn for_test(data_dir: PathBuf) -> Self {
+    pub fn for_test(data_dir: PathBuf) -> Self {
         Self {
             data_dir,
             container_runtime: None,
@@ -39,7 +39,7 @@ impl Config {
 
     /// Load from environment with portable defaults.
     #[must_use]
-    pub(crate) fn from_env() -> Self {
+    pub fn from_env() -> Self {
         let data_dir = env_path("DEVCAGE_DATA_DIR").unwrap_or_else(default_data_dir);
         let container_runtime = std::env::var("DEVCAGE_CONTAINER_RUNTIME")
             .ok()
@@ -105,7 +105,7 @@ fn default_data_dir() -> PathBuf {
 }
 
 /// Resolve workspace path: explicit override, env, git root, else cwd.
-pub(crate) fn resolve_workspace(explicit: Option<PathBuf>) -> anyhow::Result<PathBuf> {
+pub fn resolve_workspace(explicit: Option<PathBuf>) -> anyhow::Result<PathBuf> {
     let path = explicit.unwrap_or_else(default_workspace_path);
     let path = if path.is_absolute() {
         path

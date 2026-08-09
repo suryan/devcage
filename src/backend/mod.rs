@@ -8,15 +8,15 @@ mod seatbelt;
 use std::path::PathBuf;
 use std::process::Command;
 
-pub(crate) use container::{detect_container_runtime, ContainerBackend, ContainerRuntime};
-pub(crate) use host::HostBackend;
+pub use container::{detect_container_runtime, ContainerBackend, ContainerRuntime};
+pub use host::HostBackend;
 
 use crate::plan::{BackendKind, IsolationPlan};
 use crate::session::SessionRecord;
 
 /// Request to execute a command inside an isolation plan.
 #[derive(Debug, Clone)]
-pub(crate) struct ExecRequest {
+pub struct ExecRequest {
     /// Session metadata.
     pub session: SessionRecord,
     /// Isolation plan.
@@ -31,13 +31,13 @@ pub(crate) struct ExecRequest {
 
 /// Outcome of an execution attempt.
 #[derive(Debug, Clone)]
-pub(crate) struct ExecOutcome {
+pub struct ExecOutcome {
     /// Process exit code (or 1 if terminated by signal).
     pub exit_code: i32,
 }
 
 /// Common backend operations.
-pub(crate) trait Backend {
+pub trait Backend {
     /// Human name for banners / doctor.
     fn name(&self) -> &'static str;
 
@@ -55,7 +55,7 @@ pub(crate) trait Backend {
 ///
 /// For host profiles on macOS, prefer Seatbelt when `sandbox-exec` exists and
 /// the profile is `agent-host` (host-restricted). Full `host` break-glass stays plain.
-pub(crate) fn select_backend(
+pub fn select_backend(
     kind: BackendKind,
     preferred_runtime: Option<&str>,
     profile: &str,
@@ -92,7 +92,7 @@ fn seatbelt_enabled() -> bool {
 }
 
 /// Helper used by backends to run a command inheriting stdio.
-pub(crate) fn run_command(mut cmd: Command) -> anyhow::Result<ExecOutcome> {
+pub fn run_command(mut cmd: Command) -> anyhow::Result<ExecOutcome> {
     let status = cmd.status()?;
     let exit_code = status.code().unwrap_or(1);
     Ok(ExecOutcome { exit_code })
@@ -100,13 +100,13 @@ pub(crate) fn run_command(mut cmd: Command) -> anyhow::Result<ExecOutcome> {
 
 /// Default shell command inside a cage when user asks for `shell`.
 #[must_use]
-pub(crate) fn default_shell_command() -> Vec<String> {
+pub fn default_shell_command() -> Vec<String> {
     vec!["/bin/sh".to_owned(), "-l".to_owned()]
 }
 
 /// Resolve package cache dirs that exist on this host.
 #[must_use]
-pub(crate) fn existing_package_caches(share: bool) -> Vec<PathBuf> {
+pub fn existing_package_caches(share: bool) -> Vec<PathBuf> {
     if !share {
         return Vec::new();
     }

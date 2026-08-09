@@ -60,12 +60,19 @@ cp local.env.example local.env       # optional
 | Check | Tool | Policy |
 |-------|------|--------|
 | Format | `cargo fmt --check` | Required |
-| Lint | Clippy **pedantic + nursery + cargo** + selected **restriction** | `-D warnings` |
+| Lint | Clippy **`all` + `pedantic` (deny)** + nursery/cargo + selected restriction | `-D warnings` |
 | Scripts | ShellCheck `--severity=style --enable=all` | Required |
 | Tests | `cargo test` | Required |
 | Coverage | `cargo llvm-cov --fail-under-lines` | Default **80%** (`DEVCAGE_COVERAGE_MIN`) |
 
-Rust lint details live in `Cargo.toml` `[lints.rust]` / `[lints.clippy]`. Prefer **fixing** over `#[allow]`. Any allow needs a short comment.
+Rust lint details live in `Cargo.toml` `[lints.rust]` / `[lints.clippy]`.
+
+**Quality rules:**
+
+- Prefer **fixing** over `#[allow(clippy::…)]`. Pedantic is fully denied — do not “skip” it with blanket allows.
+- Layout is **`lib` + thin `main`** so crate-private modules use correct visibility under strict Clippy.
+- Policy knobs use **enums** (not bool piles) to stay pedantic-clean.
+- The only intentional Clippy allows are CLI `print_stdout` / `print_stderr` (product surface) and transitive `multiple_crate_versions`.
 
 ### Coverage
 

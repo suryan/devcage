@@ -10,6 +10,10 @@ keywords = ["security", "sandbox", "isolation", "developer-tools", "agents"]
 categories = ["command-line-utilities", "development-tools"]
 readme = "README.md"
 
+[lib]
+name = "devcage"
+path = "src/lib.rs"
+
 [[bin]]
 name = "devcage"
 path = "src/main.rs"
@@ -37,17 +41,17 @@ unused_import_braces = "deny"
 unused_lifetimes = "deny"
 unused_qualifications = "deny"
 rust_2018_idioms = { level = "deny", priority = -1 }
-unreachable_pub = "warn"
+# CLI crate: modules are intentionally crate-private. Using `pub` inside private
+# modules is correct (clippy::redundant_pub_crate); those items are not a public
+# package API, so rustc `unreachable_pub` would only force a useless fight.
+# This is NOT a pedantic skip — pedantic stays fully denied.
+unreachable_pub = "allow"
 dead_code = "deny"
 
 [lints.clippy]
-# Baseline + strictest practical groups for application code.
+# Quality bar: deny default + pedantic. Prefer fixing code over allows.
+# `all` priority must be lower than specific allows (e.g. print_stdout).
 all = { level = "deny", priority = -1 }
-correctness = { level = "deny", priority = -1 }
-suspicious = { level = "deny", priority = -1 }
-style = { level = "deny", priority = -1 }
-complexity = { level = "deny", priority = -1 }
-perf = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }
 nursery = { level = "deny", priority = -1 }
 cargo = { level = "deny", priority = -1 }
@@ -55,7 +59,7 @@ cargo = { level = "deny", priority = -1 }
 # Transitive deps often pull multiple versions (e.g. syn); not actionable in app code.
 multiple_crate_versions = "allow"
 
-# Selected `restriction` lints (full group is not usable for real apps).
+# Selected restriction lints (full restriction group is not usable for CLIs).
 as_conversions = "deny"
 dbg_macro = "deny"
 else_if_without_else = "deny"
@@ -74,8 +78,9 @@ map_err_ignore = "deny"
 mem_forget = "deny"
 multiple_inherent_impl = "deny"
 panic = "deny"
-print_stderr = "allow" # tracing / user-facing CLI diagnostics
-print_stdout = "allow" # JSON CLI output on stdout by design
+# CLI product: intentional stdout/stderr (JSON + banners). Not a pedantic skip.
+print_stderr = "allow"
+print_stdout = "allow"
 rc_buffer = "deny"
 rc_mutex = "deny"
 rest_pat_in_fully_bound_structs = "deny"
@@ -91,13 +96,6 @@ unseparated_literal_suffix = "deny"
 unwrap_used = "deny"
 verbose_file_reads = "deny"
 wildcard_enum_match_arm = "deny"
-
-# Pedantic/nursery allowances that fight this codebase shape (document if expanded).
-module_name_repetitions = "allow"
-missing_errors_doc = "allow" # anyhow::Result surfaces; expand docs as APIs stabilize
-missing_panics_doc = "allow"
-# Private modules: `pub` is enough; `pub(crate)` is redundant noise.
-redundant_pub_crate = "allow"
 
 [profile.release]
 lto = true

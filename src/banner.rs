@@ -4,7 +4,7 @@ use crate::plan::IsolationPlan;
 use crate::session::SessionRecord;
 
 /// Print the session start summary to stderr.
-pub(crate) fn print_start_banner(
+pub fn print_start_banner(
     session: &SessionRecord,
     plan: &IsolationPlan,
     backend_name: &str,
@@ -51,23 +51,23 @@ pub(crate) fn print_start_banner(
 #[cfg(test)]
 mod tests {
     use super::print_start_banner;
-    use crate::plan::{build_plan, BackendKind, NetMode};
+    use crate::plan::{build_plan, BackendKind, NetMode, PlanRequest};
     use crate::session::SessionRecord;
     use std::path::PathBuf;
 
     #[test]
     fn banner_does_not_panic() {
-        let plan = build_plan(
-            "offline",
-            BackendKind::Container,
-            NetMode::None,
-            PathBuf::from("/ws"),
-            PathBuf::from("/home"),
-            &[],
-            false,
-            true,
-            vec![],
-        );
+        let plan = build_plan(PlanRequest {
+            profile: "offline".to_owned(),
+            backend: BackendKind::Container,
+            net: NetMode::None,
+            workspace: PathBuf::from("/ws"),
+            ephemeral_home: PathBuf::from("/home"),
+            package_cache_sources: vec![],
+            break_glass: false,
+            harden_container: true,
+            env_extras: vec![],
+        });
         let session = SessionRecord::new(
             "dc-test".to_owned(),
             "offline",

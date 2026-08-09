@@ -7,10 +7,10 @@ use crate::session::SessionRecord;
 
 /// Host process backend — explicit break-glass only.
 #[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct HostBackend;
+pub struct HostBackend;
 
 /// Env keys cleared for host-profile children (defense in depth only).
-pub(crate) const SENSITIVE_ENV: &[&str] = &[
+pub const SENSITIVE_ENV: &[&str] = &[
     "AWS_SECRET_ACCESS_KEY",
     "AWS_ACCESS_KEY_ID",
     "AWS_SESSION_TOKEN",

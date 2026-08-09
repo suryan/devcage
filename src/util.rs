@@ -4,13 +4,13 @@ use std::path::Path;
 
 /// Return `true` if `bin` exists as a file on `PATH`.
 #[must_use]
-pub(crate) fn which(bin: &str) -> bool {
+pub fn which(bin: &str) -> bool {
     which_in_path(bin, std::env::var_os("PATH").as_deref())
 }
 
 /// PATH-aware lookup used by [`which`] and tests.
 #[must_use]
-pub(crate) fn which_in_path(bin: &str, path_os: Option<&std::ffi::OsStr>) -> bool {
+pub fn which_in_path(bin: &str, path_os: Option<&std::ffi::OsStr>) -> bool {
     let Some(paths) = path_os else {
         return false;
     };
@@ -27,7 +27,7 @@ fn path_is_executable_file(path: &Path) -> bool {
 /// Build a standard "not available" style message (tests + future stubs).
 #[must_use]
 #[cfg_attr(not(test), allow(dead_code))]
-pub(crate) fn not_implemented_message(cmd: &str, detail: Option<&str>) -> String {
+pub fn not_implemented_message(cmd: &str, detail: Option<&str>) -> String {
     let mut msg = format!(
         "devcage {cmd}: not implemented yet (scaffold {version}). See docs/product_requirements.md and docs/development.md.",
         version = env!("CARGO_PKG_VERSION"),

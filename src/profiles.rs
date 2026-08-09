@@ -6,7 +6,7 @@ use crate::plan::{BackendKind, NetMode};
 
 /// A built-in profile descriptor for `profile list` / docs alignment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BuiltinProfile {
+pub struct BuiltinProfile {
     /// Profile name (`agent`, `offline`, …).
     pub name: &'static str,
     /// One-line summary for humans and JSON output.
@@ -15,30 +15,104 @@ pub(crate) struct BuiltinProfile {
     pub tier: &'static str,
 }
 
-/// Runtime policy for a profile.
+/// Whether a session home is wiped after exit by default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(clippy::struct_excessive_bools)] // policy flags map 1:1 to profile knobs
-pub(crate) struct ProfilePolicy {
+pub enum WipeMode {
+    /// Always discard ephemeral home after the process exits.
+    Always,
+    /// Keep unless the user passes `--wipe`.
+    OnRequest,
+}
+
+/// Whether host package caches may be RO-mounted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheShare {
+    /// Optional RO share of named host caches when enabled in config.
+    Allow,
+    /// Never share host package caches.
+    Deny,
+}
+
+/// Container hardening preference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HardenMode {
+    /// Apply `--cap-drop ALL` and `no-new-privileges`.
+    Hardened,
+    /// Default container privileges for the image.
+    Default,
+}
+
+/// Host trust framing for banners and docs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrustMode {
+    /// Contained / profiled isolation path.
+    Contained,
+    /// Explicit elevated / break-glass path.
+    BreakGlass,
+}
+
+/// Implementation status of a built-in name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShipStatus {
+    /// Available to run.
+    Ready,
+}
+
+/// Runtime policy for a profile (enums instead of bool soup — pedantic-friendly).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProfilePolicy {
     /// Profile name.
     pub name: &'static str,
     /// Backend kind.
     pub backend: BackendKind,
     /// Network mode.
     pub net: NetMode,
-    /// Emit break-glass warnings.
-    pub break_glass: bool,
-    /// Always wipe ephemeral home after exit.
-    pub always_wipe: bool,
-    /// Allow optional RO host package cache mounts.
-    pub allow_package_caches: bool,
-    /// Drop Linux capabilities / no-new-privileges in container.
-    pub harden_container: bool,
-    /// Implemented in this release.
-    pub implemented: bool,
+    /// Trust framing.
+    pub trust: TrustMode,
+    /// Wipe policy.
+    pub wipe: WipeMode,
+    /// Host cache share policy.
+    pub caches: CacheShare,
+    /// Container harden policy.
+    pub harden: HardenMode,
+    /// Ship status.
+    pub status: ShipStatus,
+}
+
+impl ProfilePolicy {
+    /// Loud break-glass warning required.
+    #[must_use]
+    pub const fn break_glass(self) -> bool {
+        matches!(self.trust, TrustMode::BreakGlass)
+    }
+
+    /// Always wipe after exit.
+    #[must_use]
+    pub const fn always_wipe(self) -> bool {
+        matches!(self.wipe, WipeMode::Always)
+    }
+
+    /// Allow RO package cache mounts when config enables sharing.
+    #[must_use]
+    pub const fn allow_package_caches(self) -> bool {
+        matches!(self.caches, CacheShare::Allow)
+    }
+
+    /// Harden container flags.
+    #[must_use]
+    pub const fn harden_container(self) -> bool {
+        matches!(self.harden, HardenMode::Hardened)
+    }
+
+    /// Profile is implemented.
+    #[must_use]
+    pub const fn implemented(self) -> bool {
+        matches!(self.status, ShipStatus::Ready)
+    }
 }
 
 /// Core + implemented profiles.
-pub(crate) const CORE_PROFILES: &[BuiltinProfile] = &[
+pub const CORE_PROFILES: &[BuiltinProfile] = &[
     BuiltinProfile {
         name: "agent",
         summary: "Default AI coding in a Linux container; network=full (container), labeled honestly",
@@ -72,70 +146,74 @@ pub(crate) const CORE_PROFILES: &[BuiltinProfile] = &[
 ];
 
 /// Reserved names not yet implemented.
-pub(crate) const ROADMAP_PROFILES: &[BuiltinProfile] = &[];
+pub const ROADMAP_PROFILES: &[BuiltinProfile] = &[];
 
 /// Resolve policy for a profile name.
-pub(crate) fn resolve_policy(name: &str) -> anyhow::Result<ProfilePolicy> {
+///
+/// # Errors
+///
+/// Returns an error when the profile name is unknown.
+pub fn resolve_policy(name: &str) -> anyhow::Result<ProfilePolicy> {
     match name {
         "agent" => Ok(ProfilePolicy {
             name: "agent",
             backend: BackendKind::Container,
             net: NetMode::Full,
-            break_glass: false,
-            always_wipe: false,
-            allow_package_caches: true,
-            harden_container: false,
-            implemented: true,
+            trust: TrustMode::Contained,
+            wipe: WipeMode::OnRequest,
+            caches: CacheShare::Allow,
+            harden: HardenMode::Default,
+            status: ShipStatus::Ready,
         }),
         "agent-host" => Ok(ProfilePolicy {
             name: "agent-host",
             backend: BackendKind::Host,
             net: NetMode::Host,
-            break_glass: true,
-            always_wipe: false,
-            allow_package_caches: true,
-            harden_container: false,
-            implemented: true,
+            trust: TrustMode::BreakGlass,
+            wipe: WipeMode::OnRequest,
+            caches: CacheShare::Allow,
+            harden: HardenMode::Default,
+            status: ShipStatus::Ready,
         }),
         "offline" => Ok(ProfilePolicy {
             name: "offline",
             backend: BackendKind::Container,
             net: NetMode::None,
-            break_glass: false,
-            always_wipe: true,
-            allow_package_caches: true,
-            harden_container: true,
-            implemented: true,
+            trust: TrustMode::Contained,
+            wipe: WipeMode::Always,
+            caches: CacheShare::Allow,
+            harden: HardenMode::Hardened,
+            status: ShipStatus::Ready,
         }),
         "untrusted" => Ok(ProfilePolicy {
             name: "untrusted",
             backend: BackendKind::Container,
             net: NetMode::None,
-            break_glass: false,
-            always_wipe: true,
-            allow_package_caches: false,
-            harden_container: true,
-            implemented: true,
+            trust: TrustMode::Contained,
+            wipe: WipeMode::Always,
+            caches: CacheShare::Deny,
+            harden: HardenMode::Hardened,
+            status: ShipStatus::Ready,
         }),
         "host" => Ok(ProfilePolicy {
             name: "host",
             backend: BackendKind::Host,
             net: NetMode::Host,
-            break_glass: true,
-            always_wipe: false,
-            allow_package_caches: false,
-            harden_container: false,
-            implemented: true,
+            trust: TrustMode::BreakGlass,
+            wipe: WipeMode::OnRequest,
+            caches: CacheShare::Deny,
+            harden: HardenMode::Default,
+            status: ShipStatus::Ready,
         }),
         "net-allowlist" => Ok(ProfilePolicy {
             name: "net-allowlist",
             backend: BackendKind::Container,
             net: NetMode::Allowlist,
-            break_glass: false,
-            always_wipe: false,
-            allow_package_caches: true,
-            harden_container: false,
-            implemented: true,
+            trust: TrustMode::Contained,
+            wipe: WipeMode::OnRequest,
+            caches: CacheShare::Allow,
+            harden: HardenMode::Default,
+            status: ShipStatus::Ready,
         }),
         other => anyhow::bail!(
             "unknown profile `{other}`; core: agent, agent-host, offline, untrusted, net-allowlist, host"
@@ -145,10 +223,10 @@ pub(crate) fn resolve_policy(name: &str) -> anyhow::Result<ProfilePolicy> {
 
 /// JSON document for `devcage profile list`.
 #[must_use]
-pub(crate) fn profile_list_json() -> Value {
+pub fn profile_list_json() -> Value {
     let mut profiles = Vec::new();
     for p in CORE_PROFILES {
-        let implemented = resolve_policy(p.name).is_ok_and(|pol| pol.implemented);
+        let implemented = resolve_policy(p.name).is_ok_and(ProfilePolicy::implemented);
         profiles.push(json!({
             "name": p.name,
             "builtin": true,
@@ -174,7 +252,7 @@ pub(crate) fn profile_list_json() -> Value {
 
 /// JSON document for `devcage profile show`.
 #[must_use]
-pub(crate) fn profile_show_json(name: &str) -> Value {
+pub fn profile_show_json(name: &str) -> Value {
     let policy = resolve_policy(name).ok();
     let known = CORE_PROFILES
         .iter()
@@ -185,16 +263,16 @@ pub(crate) fn profile_show_json(name: &str) -> Value {
         "known": known.is_some(),
         "tier": known.map(|p| p.tier),
         "summary": known.map(|p| p.summary),
-        "implemented": policy.is_some_and(|p| p.implemented),
+        "implemented": policy.is_some_and(ProfilePolicy::implemented),
         "backend": policy.map(|p| match p.backend {
             BackendKind::Container => "container",
             BackendKind::Host => "host",
         }),
         "network": policy.map(|p| p.net.label()),
-        "break_glass": policy.map(|p| p.break_glass),
-        "always_wipe": policy.map(|p| p.always_wipe),
-        "allow_package_caches": policy.map(|p| p.allow_package_caches),
-        "harden_container": policy.map(|p| p.harden_container),
+        "break_glass": policy.map(ProfilePolicy::break_glass),
+        "always_wipe": policy.map(ProfilePolicy::always_wipe),
+        "allow_package_caches": policy.map(ProfilePolicy::allow_package_caches),
+        "harden_container": policy.map(ProfilePolicy::harden_container),
     })
 }
 
@@ -215,9 +293,9 @@ mod tests {
     fn untrusted_is_strict() {
         let p = resolve_policy("untrusted").expect("untrusted");
         assert_eq!(p.net, NetMode::None);
-        assert!(p.always_wipe);
-        assert!(!p.allow_package_caches);
-        assert!(p.harden_container);
+        assert!(p.always_wipe());
+        assert!(!p.allow_package_caches());
+        assert!(p.harden_container());
         assert_eq!(p.backend, BackendKind::Container);
     }
 
@@ -225,14 +303,14 @@ mod tests {
     fn agent_host_is_host_backend() {
         let p = resolve_policy("agent-host").expect("agent-host");
         assert_eq!(p.backend, BackendKind::Host);
-        assert!(p.break_glass);
+        assert!(p.break_glass());
     }
 
     #[test]
     fn offline_wipes_by_default() {
         let p = resolve_policy("offline").expect("offline");
-        assert!(p.always_wipe);
-        assert!(p.harden_container);
+        assert!(p.always_wipe());
+        assert!(p.harden_container());
     }
 
     #[test]
@@ -240,13 +318,13 @@ mod tests {
         let p = resolve_policy("agent").expect("agent");
         assert_eq!(p.backend, BackendKind::Container);
         assert_eq!(p.net, NetMode::Full);
-        assert!(!p.always_wipe);
+        assert!(!p.always_wipe());
     }
 
     #[test]
     fn host_policy_is_break_glass() {
         let p = resolve_policy("host").expect("host");
-        assert!(p.break_glass);
+        assert!(p.break_glass());
         assert_eq!(p.backend, BackendKind::Host);
     }
 

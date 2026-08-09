@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand};
 /// `DevCage` — easy isolation for AI agent development.
 #[derive(Debug, Parser)]
 #[command(name = "devcage", version, about, long_about = None)]
-pub(crate) struct Cli {
+pub struct Cli {
     /// Subcommand to run.
     #[command(subcommand)]
     pub command: Commands,
@@ -15,7 +15,7 @@ pub(crate) struct Cli {
 
 /// Top-level commands.
 #[derive(Debug, Subcommand)]
-pub(crate) enum Commands {
+pub enum Commands {
     /// Probe host tooling and print scaffold status (JSON).
     Doctor,
     /// List active sessions (none until runtime exists).
@@ -115,6 +115,20 @@ pub(crate) enum Commands {
         #[arg(default_value = ".devcage/net-allowlist.txt")]
         path: PathBuf,
     },
+    /// Print the isolation plan for a profile without starting a session.
+    Explain {
+        /// Profile name.
+        #[arg(
+            long,
+            short = 'p',
+            default_value = "agent",
+            env = "DEVCAGE_DEFAULT_PROFILE"
+        )]
+        profile: String,
+        /// Workspace override.
+        #[arg(long, short = 'w', env = "DEVCAGE_WORKSPACE")]
+        workspace: Option<PathBuf>,
+    },
     /// Isolation smoke checks (workspace safety, runtime, optional container probe).
     Verify,
     /// Pull the configured container image.
@@ -129,7 +143,7 @@ pub(crate) enum Commands {
 
 /// Profile subcommands.
 #[derive(Debug, Subcommand)]
-pub(crate) enum ProfileCmd {
+pub enum ProfileCmd {
     /// List known profiles.
     List,
     /// Show one profile (schema TBD).

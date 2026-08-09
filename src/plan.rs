@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 /// Network mode applied by a backend.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum NetMode {
+pub enum NetMode {
     /// No network (`offline`).
     None,
     /// Full container network (honest label for `agent`).
@@ -18,7 +18,7 @@ pub(crate) enum NetMode {
 impl NetMode {
     /// Banner / JSON label.
     #[must_use]
-    pub(crate) const fn label(self) -> &'static str {
+    pub const fn label(self) -> &'static str {
         match self {
             Self::None => "none (enforced)",
             Self::Full => "full (container) — not an allowlist",
@@ -30,7 +30,7 @@ impl NetMode {
 
 /// Backend kind selected for a profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BackendKind {
+pub enum BackendKind {
     /// Docker/Podman container cage.
     Container,
     /// Break-glass host process.
@@ -39,7 +39,7 @@ pub(crate) enum BackendKind {
 
 /// Bind mount request.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct BindMount {
+pub struct BindMount {
     /// Host path.
     pub source: PathBuf,
     /// Path inside the cage.
@@ -50,7 +50,7 @@ pub(crate) struct BindMount {
 
 /// Concrete isolation plan for a session.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct IsolationPlan {
+pub struct IsolationPlan {
     /// Profile name.
     pub profile: String,
     /// Backend.
@@ -75,22 +75,34 @@ pub(crate) struct IsolationPlan {
     pub env_extras: Vec<(String, String)>,
 }
 
+/// Input bundle for [`build_plan`] (avoids too-many-arguments).
+#[derive(Debug, Clone)]
+pub struct PlanRequest {
+    /// Profile name.
+    pub profile: String,
+    /// Backend.
+    pub backend: BackendKind,
+    /// Network mode.
+    pub net: NetMode,
+    /// Host workspace.
+    pub workspace: PathBuf,
+    /// Ephemeral home on host.
+    pub ephemeral_home: PathBuf,
+    /// Optional RO package cache host paths.
+    pub package_cache_sources: Vec<PathBuf>,
+    /// Break-glass banner.
+    pub break_glass: bool,
+    /// Harden container.
+    pub harden_container: bool,
+    /// Extra env for the child.
+    pub env_extras: Vec<(String, String)>,
+}
+
 /// Build mount list for the workspace + home + optional caches.
 #[must_use]
-#[allow(clippy::too_many_arguments)] // plan builder packs orthogonal fields
-pub(crate) fn build_plan(
-    profile: &str,
-    backend: BackendKind,
-    net: NetMode,
-    workspace: PathBuf,
-    ephemeral_home: PathBuf,
-    package_cache_sources: &[PathBuf],
-    break_glass: bool,
-    harden_container: bool,
-    env_extras: Vec<(String, String)>,
-) -> IsolationPlan {
+pub fn build_plan(req: PlanRequest) -> IsolationPlan {
     let mut extra_mounts = Vec::new();
-    for (i, src) in package_cache_sources.iter().enumerate() {
+    for (i, src) in req.package_cache_sources.iter().enumerate() {
         if src.is_dir() {
             extra_mounts.push(BindMount {
                 source: src.clone(),
@@ -100,22 +112,26 @@ pub(crate) fn build_plan(
         }
     }
     IsolationPlan {
-        profile: profile.to_owned(),
-        backend,
-        net,
-        workspace,
+        profile: req.profile,
+        backend: req.backend,
+        net: req.net,
+        workspace: req.workspace,
         workspace_in_cage: PathBuf::from("/workspace"),
-        ephemeral_home,
+        ephemeral_home: req.ephemeral_home,
         home_in_cage: PathBuf::from("/home/devcage"),
         extra_mounts,
-        break_glass,
-        harden_container,
-        env_extras,
+        break_glass: req.break_glass,
+        harden_container: req.harden_container,
+        env_extras: req.env_extras,
     }
 }
 
 /// Reject using sensitive host directories as the project workspace.
-pub(crate) fn ensure_workspace_safe(workspace: &Path) -> anyhow::Result<()> {
+///
+/// # Errors
+///
+/// Returns an error when the workspace path is under a sensitive directory.
+pub fn ensure_workspace_safe(workspace: &Path) -> anyhow::Result<()> {
     if is_sensitive_path(workspace) {
         anyhow::bail!(
             "refusing workspace under sensitive path: {} \
@@ -123,7 +139,6 @@ pub(crate) fn ensure_workspace_safe(workspace: &Path) -> anyhow::Result<()> {
             workspace.display()
         );
     }
-    // Also refuse if any path component is a classic secret directory name.
     for c in workspace.components() {
         if let Some(s) = c.as_os_str().to_str() {
             if matches!(s, ".ssh" | ".gnupg" | ".aws" | ".azure" | ".kube") {
@@ -139,7 +154,7 @@ pub(crate) fn ensure_workspace_safe(workspace: &Path) -> anyhow::Result<()> {
 
 /// Host paths that must never be auto-mounted as the project (secret dirs).
 #[must_use]
-pub(crate) fn is_sensitive_path(path: &Path) -> bool {
+pub fn is_sensitive_path(path: &Path) -> bool {
     let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
     matches!(
         name,
@@ -151,7 +166,7 @@ pub(crate) fn is_sensitive_path(path: &Path) -> bool {
 
 /// Default package cache locations under the user home (RO share candidates).
 #[must_use]
-pub(crate) fn default_package_cache_candidates(home: &Path) -> Vec<PathBuf> {
+pub fn default_package_cache_candidates(home: &Path) -> Vec<PathBuf> {
     vec![
         home.join(".npm"),
         home.join(".cache").join("npm"),
@@ -166,7 +181,7 @@ pub(crate) fn default_package_cache_candidates(home: &Path) -> Vec<PathBuf> {
 mod tests {
     use super::{
         build_plan, default_package_cache_candidates, ensure_workspace_safe, is_sensitive_path,
-        BackendKind, NetMode,
+        BackendKind, NetMode, PlanRequest,
     };
     use std::path::PathBuf;
 
@@ -195,17 +210,17 @@ mod tests {
     fn build_plan_adds_ro_caches_when_dirs_exist() {
         let dir = std::env::temp_dir().join(format!("devcage-cache-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("mkdir");
-        let plan = build_plan(
-            "agent",
-            BackendKind::Container,
-            NetMode::Full,
-            PathBuf::from("/proj"),
-            PathBuf::from("/tmp/home"),
-            std::slice::from_ref(&dir),
-            false,
-            false,
-            vec![],
-        );
+        let plan = build_plan(PlanRequest {
+            profile: "agent".to_owned(),
+            backend: BackendKind::Container,
+            net: NetMode::Full,
+            workspace: PathBuf::from("/proj"),
+            ephemeral_home: PathBuf::from("/tmp/home"),
+            package_cache_sources: vec![dir.clone()],
+            break_glass: false,
+            harden_container: false,
+            env_extras: vec![],
+        });
         assert_eq!(plan.extra_mounts.len(), 1);
         assert!(plan.extra_mounts[0].read_only);
         let _ = std::fs::remove_dir_all(dir);

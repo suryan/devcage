@@ -8,7 +8,7 @@ use serde::Serialize;
 
 /// One structured event for a session.
 #[derive(Debug, Serialize)]
-pub(crate) struct SessionEvent {
+pub struct SessionEvent {
     /// Unix seconds.
     pub ts: u64,
     /// Event type.
@@ -22,7 +22,7 @@ pub(crate) struct SessionEvent {
 
 /// Path to the event log for a session.
 #[must_use]
-pub(crate) fn events_path(data_dir: &Path, session_id: &str) -> PathBuf {
+pub fn events_path(data_dir: &Path, session_id: &str) -> PathBuf {
     data_dir
         .join("sessions")
         .join(session_id)
@@ -30,7 +30,7 @@ pub(crate) fn events_path(data_dir: &Path, session_id: &str) -> PathBuf {
 }
 
 /// Append one event line.
-pub(crate) fn append_event(
+pub fn append_event(
     data_dir: &Path,
     session_id: &str,
     kind: &'static str,
@@ -54,7 +54,7 @@ pub(crate) fn append_event(
 }
 
 /// Read event log text (empty if missing).
-pub(crate) fn read_events(data_dir: &Path, session_id: &str) -> anyhow::Result<String> {
+pub fn read_events(data_dir: &Path, session_id: &str) -> anyhow::Result<String> {
     let path = events_path(data_dir, session_id);
     if !path.exists() {
         return Ok(String::new());

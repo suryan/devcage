@@ -10,13 +10,72 @@ use crate::backend::{
 };
 use crate::banner::print_start_banner;
 use crate::config::{resolve_workspace, Config};
-use crate::plan::{build_plan, ensure_workspace_safe, BackendKind};
+use crate::plan::{build_plan, ensure_workspace_safe, BackendKind, PlanRequest};
 use crate::profiles::{profile_list_json, profile_show_json, resolve_policy};
 use crate::session::{new_session_id, SessionStatus, SessionStore};
 use crate::util::which;
 
+/// Explain isolation plan for a profile without running anything.
+pub fn explain(
+    cfg: &Config,
+    profile: &str,
+    workspace: Option<std::path::PathBuf>,
+) -> anyhow::Result<()> {
+    let policy = resolve_policy(profile)?;
+    let workspace = resolve_workspace(workspace)?;
+    ensure_workspace_safe(&workspace)?;
+    let backend = select_backend(
+        policy.backend,
+        cfg.container_runtime.as_deref(),
+        policy.name,
+    );
+    let backend_name = backend.as_ref().map(|b| b.name()).unwrap_or("unavailable");
+    let backend_ok = backend.as_ref().is_ok_and(|b| b.available());
+    let share_caches = cfg.share_package_caches && policy.allow_package_caches();
+    let caches = existing_package_caches(share_caches);
+    let mut env_extras = Vec::new();
+    if policy.net == crate::plan::NetMode::Allowlist {
+        if let Ok(al) = load_allowlist(cfg) {
+            env_extras.push(("DEVCAGE_NET_ALLOWLIST".to_owned(), al.joined()));
+            env_extras.push(("DEVCAGE_NET_ENFORCEMENT".to_owned(), "advisory".to_owned()));
+        }
+    }
+    let plan = build_plan(PlanRequest {
+        profile: policy.name.to_owned(),
+        backend: policy.backend,
+        net: policy.net,
+        workspace,
+        ephemeral_home: cfg.data_dir.join("sessions").join("<id>").join("home"),
+        package_cache_sources: caches,
+        break_glass: policy.break_glass(),
+        harden_container: policy.harden_container(),
+        env_extras,
+    });
+    let report = json!({
+        "profile": policy.name,
+        "backend": backend_name,
+        "backend_available": backend_ok,
+        "network": plan.net.label(),
+        "workspace": plan.workspace,
+        "ephemeral_home_pattern": plan.ephemeral_home,
+        "harden_container": plan.harden_container,
+        "always_wipe": policy.always_wipe(),
+        "allow_package_caches": policy.allow_package_caches(),
+        "break_glass": policy.break_glass(),
+        "extra_mounts": plan.extra_mounts.iter().map(|m| json!({
+            "source": m.source,
+            "target": m.target,
+            "read_only": m.read_only,
+        })).collect::<Vec<_>>(),
+        "env_extras": plan.env_extras,
+        "image": (policy.backend == BackendKind::Container).then_some(&cfg.container_image),
+    });
+    println!("{}", serde_json::to_string_pretty(&report)?);
+    Ok(())
+}
+
 /// Run `doctor` JSON report.
-pub(crate) fn doctor(cfg: &Config) -> anyhow::Result<()> {
+pub fn doctor(cfg: &Config) -> anyhow::Result<()> {
     let docker = which("docker");
     let podman = which("podman");
     let runtime = detect_container_runtime(cfg.container_runtime.as_deref()).ok();
@@ -68,7 +127,7 @@ pub(crate) fn doctor(cfg: &Config) -> anyhow::Result<()> {
 }
 
 /// List sessions as JSON.
-pub(crate) fn status(cfg: &Config) -> anyhow::Result<()> {
+pub fn status(cfg: &Config) -> anyhow::Result<()> {
     let store = SessionStore::new(&cfg.data_dir);
     let sessions = store.list()?;
     let report = json!({
@@ -80,7 +139,7 @@ pub(crate) fn status(cfg: &Config) -> anyhow::Result<()> {
 }
 
 /// Profile list/show.
-pub(crate) fn profile_cmd(action: crate::cli::ProfileCmd) -> anyhow::Result<()> {
+pub fn profile_cmd(action: crate::cli::ProfileCmd) -> anyhow::Result<()> {
     match action {
         crate::cli::ProfileCmd::List => {
             println!("{}", serde_json::to_string_pretty(&profile_list_json())?);
@@ -96,7 +155,7 @@ pub(crate) fn profile_cmd(action: crate::cli::ProfileCmd) -> anyhow::Result<()> 
 }
 
 /// Pull the configured container image.
-pub(crate) fn pull(cfg: &Config) -> anyhow::Result<()> {
+pub fn pull(cfg: &Config) -> anyhow::Result<()> {
     let rt = detect_container_runtime(cfg.container_runtime.as_deref())?;
     eprintln!("devcage: pulling {} with {}", cfg.container_image, rt.bin());
     let status = Command::new(rt.bin())
@@ -114,7 +173,7 @@ pub(crate) fn pull(cfg: &Config) -> anyhow::Result<()> {
 }
 
 /// Wipe exited/stopped sessions (or all with `all`).
-pub(crate) fn clean(cfg: &Config, all: bool) -> anyhow::Result<()> {
+pub fn clean(cfg: &Config, all: bool) -> anyhow::Result<()> {
     let store = SessionStore::new(&cfg.data_dir);
     let sessions = store.list()?;
     let mut wiped = 0_usize;
@@ -136,108 +195,13 @@ pub(crate) fn clean(cfg: &Config, all: bool) -> anyhow::Result<()> {
 }
 
 /// Isolation smoke checks (host-side + optional container).
-#[allow(clippy::too_many_lines)] // structured multi-check report
-pub(crate) fn verify(cfg: &Config) -> anyhow::Result<ExitCode> {
+pub fn verify(cfg: &Config) -> anyhow::Result<ExitCode> {
     let mut checks = Vec::new();
     let mut failed = 0_usize;
-
-    // Workspace safety
-    match resolve_workspace(None) {
-        Ok(ws) => match ensure_workspace_safe(&ws) {
-            Ok(()) => checks.push(json!({"id": "workspace_safe", "ok": true, "path": ws})),
-            Err(e) => {
-                failed += 1;
-                checks.push(json!({"id": "workspace_safe", "ok": false, "error": e.to_string()}));
-            },
-        },
-        Err(e) => {
-            failed += 1;
-            checks.push(json!({"id": "workspace_resolve", "ok": false, "error": e.to_string()}));
-        },
-    }
-
-    // Sensitive home dirs exist but are not used as default workspace (informational)
-    if let Some(home) = std::env::var_os("HOME") {
-        let ssh = std::path::PathBuf::from(&home).join(".ssh");
-        checks.push(json!({
-            "id": "host_ssh_present",
-            "ok": true,
-            "exists": ssh.is_dir(),
-            "note": "cage must not mount this; offline/untrusted use ephemeral HOME only",
-        }));
-    }
-
-    // Container runtime
-    match detect_container_runtime(cfg.container_runtime.as_deref()) {
-        Ok(rt) => {
-            checks.push(json!({"id": "container_runtime", "ok": true, "runtime": rt.bin()}));
-            // Offline network none: run a short container if possible
-            let probe = Command::new(rt.bin())
-                .args([
-                    "run",
-                    "--rm",
-                    "--network",
-                    "none",
-                    "--security-opt",
-                    "no-new-privileges",
-                    "--cap-drop",
-                    "ALL",
-                    &cfg.container_image,
-                    "sh",
-                    "-c",
-                    "echo ok",
-                ])
-                .output();
-            match probe {
-                Ok(out) if out.status.success() => {
-                    checks.push(json!({
-                        "id": "offline_container_probe",
-                        "ok": true,
-                        "image": cfg.container_image,
-                    }));
-                },
-                Ok(out) => {
-                    failed += 1;
-                    checks.push(json!({
-                        "id": "offline_container_probe",
-                        "ok": false,
-                        "stderr": String::from_utf8_lossy(&out.stderr),
-                        "hint": "try: devcage pull",
-                    }));
-                },
-                Err(e) => {
-                    failed += 1;
-                    checks.push(json!({
-                        "id": "offline_container_probe",
-                        "ok": false,
-                        "error": e.to_string(),
-                    }));
-                },
-            }
-        },
-        Err(e) => {
-            checks.push(json!({
-                "id": "container_runtime",
-                "ok": false,
-                "error": e.to_string(),
-                "note": "host profile still works; isolated profiles need Docker/Podman",
-            }));
-            // Not a hard fail for verify when only host is available — but mark degraded
-            failed += 1;
-        },
-    }
-
-    // Host profile can run
-    let host_ok = Command::new("/usr/bin/true")
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if host_ok {
-        checks.push(json!({"id": "host_true", "ok": true}));
-    } else {
-        failed += 1;
-        checks.push(json!({"id": "host_true", "ok": false}));
-    }
+    failed += push_workspace_checks(&mut checks);
+    push_ssh_note(&mut checks);
+    failed += push_container_checks(cfg, &mut checks);
+    failed += push_host_true_check(&mut checks);
 
     let report = json!({
         "product": "devcage",
@@ -253,9 +217,122 @@ pub(crate) fn verify(cfg: &Config) -> anyhow::Result<ExitCode> {
     }
 }
 
+fn push_workspace_checks(checks: &mut Vec<serde_json::Value>) -> usize {
+    match resolve_workspace(None) {
+        Ok(ws) => match ensure_workspace_safe(&ws) {
+            Ok(()) => {
+                checks.push(json!({"id": "workspace_safe", "ok": true, "path": ws}));
+                0
+            },
+            Err(e) => {
+                checks.push(json!({"id": "workspace_safe", "ok": false, "error": e.to_string()}));
+                1
+            },
+        },
+        Err(e) => {
+            checks.push(json!({"id": "workspace_resolve", "ok": false, "error": e.to_string()}));
+            1
+        },
+    }
+}
+
+fn push_ssh_note(checks: &mut Vec<serde_json::Value>) {
+    if let Some(home) = std::env::var_os("HOME") {
+        let ssh = std::path::PathBuf::from(&home).join(".ssh");
+        checks.push(json!({
+            "id": "host_ssh_present",
+            "ok": true,
+            "exists": ssh.is_dir(),
+            "note": "cage must not mount this; offline/untrusted use ephemeral HOME only",
+        }));
+    }
+}
+
+fn push_container_checks(cfg: &Config, checks: &mut Vec<serde_json::Value>) -> usize {
+    match detect_container_runtime(cfg.container_runtime.as_deref()) {
+        Ok(rt) => {
+            checks.push(json!({"id": "container_runtime", "ok": true, "runtime": rt.bin()}));
+            push_offline_probe(cfg, rt.bin(), checks)
+        },
+        Err(e) => {
+            checks.push(json!({
+                "id": "container_runtime",
+                "ok": false,
+                "error": e.to_string(),
+                "note": "host profile still works; isolated profiles need Docker/Podman",
+            }));
+            1
+        },
+    }
+}
+
+fn push_offline_probe(
+    cfg: &Config,
+    runtime_bin: &str,
+    checks: &mut Vec<serde_json::Value>,
+) -> usize {
+    let probe = Command::new(runtime_bin)
+        .args([
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--security-opt",
+            "no-new-privileges",
+            "--cap-drop",
+            "ALL",
+            &cfg.container_image,
+            "sh",
+            "-c",
+            "echo ok",
+        ])
+        .output();
+    match probe {
+        Ok(out) if out.status.success() => {
+            checks.push(json!({
+                "id": "offline_container_probe",
+                "ok": true,
+                "image": cfg.container_image,
+            }));
+            0
+        },
+        Ok(out) => {
+            checks.push(json!({
+                "id": "offline_container_probe",
+                "ok": false,
+                "stderr": String::from_utf8_lossy(&out.stderr),
+                "hint": "try: devcage pull",
+            }));
+            1
+        },
+        Err(e) => {
+            checks.push(json!({
+                "id": "offline_container_probe",
+                "ok": false,
+                "error": e.to_string(),
+            }));
+            1
+        },
+    }
+}
+
+fn push_host_true_check(checks: &mut Vec<serde_json::Value>) -> usize {
+    let host_ok = Command::new("/usr/bin/true")
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if host_ok {
+        checks.push(json!({"id": "host_true", "ok": true}));
+        0
+    } else {
+        checks.push(json!({"id": "host_true", "ok": false}));
+        1
+    }
+}
+
 /// Parameters for a cage run.
 #[derive(Debug)]
-pub(crate) struct RunParams {
+pub struct RunParams {
     /// Profile name.
     pub profile: String,
     /// Workspace override.
@@ -271,13 +348,16 @@ pub(crate) struct RunParams {
 }
 
 /// Execute a command in a profile; returns process exit code.
-#[allow(clippy::too_many_lines)]
-pub(crate) fn run(cfg: &Config, params: RunParams) -> anyhow::Result<ExitCode> {
+///
+/// # Errors
+///
+/// Returns an error when the profile cannot be applied, the backend is missing,
+/// or the child process cannot be started.
+pub fn run(cfg: &Config, params: RunParams) -> anyhow::Result<ExitCode> {
     let policy = resolve_policy(&params.profile)?;
     if params.command.is_empty() {
         anyhow::bail!("no command specified; example: devcage run -p offline -- echo hi");
     }
-    // Fail closed before creating session state.
     let backend = select_backend(
         policy.backend,
         cfg.container_runtime.as_deref(),
@@ -292,41 +372,25 @@ pub(crate) fn run(cfg: &Config, params: RunParams) -> anyhow::Result<ExitCode> {
 
     let workspace = resolve_workspace(params.workspace)?;
     ensure_workspace_safe(&workspace)?;
-
-    let mut env_extras = Vec::new();
-    if policy.net == crate::plan::NetMode::Allowlist {
-        let al = load_allowlist(cfg)?;
-        if al.hosts.is_empty() {
-            anyhow::bail!(
-                "profile net-allowlist requires a non-empty allowlist file \
-                 (set DEVCAGE_NET_ALLOWLIST_FILE); see examples/net-allowlist.txt"
-            );
-        }
-        eprintln!(
-            "devcage: net-allowlist advisory ({} hosts) — not kernel-enforced yet",
-            al.hosts.len()
-        );
-        env_extras.push(("DEVCAGE_NET_ALLOWLIST".to_owned(), al.joined()));
-        env_extras.push(("DEVCAGE_NET_ENFORCEMENT".to_owned(), "advisory".to_owned()));
-    }
+    let env_extras = allowlist_env_extras(cfg, policy.net)?;
 
     let store = SessionStore::new(&cfg.data_dir);
     store.ensure()?;
     let id = new_session_id();
     let home = store.prepare_home(&id)?;
-    let share_caches = cfg.share_package_caches && policy.allow_package_caches;
+    let share_caches = cfg.share_package_caches && policy.allow_package_caches();
     let caches = existing_package_caches(share_caches);
-    let plan = build_plan(
-        policy.name,
-        policy.backend,
-        policy.net,
-        workspace.clone(),
-        home.clone(),
-        &caches,
-        policy.break_glass,
-        policy.harden_container,
+    let plan = build_plan(PlanRequest {
+        profile: policy.name.to_owned(),
+        backend: policy.backend,
+        net: policy.net,
+        workspace: workspace.clone(),
+        ephemeral_home: home.clone(),
+        package_cache_sources: caches,
+        break_glass: policy.break_glass(),
+        harden_container: policy.harden_container(),
         env_extras,
-    );
+    });
     let container_name = match policy.backend {
         BackendKind::Container => Some(format!("devcage-{id}")),
         BackendKind::Host => None,
@@ -348,10 +412,7 @@ pub(crate) fn run(cfg: &Config, params: RunParams) -> anyhow::Result<ExitCode> {
         None,
     );
 
-    let image = match policy.backend {
-        BackendKind::Container => Some(cfg.container_image.as_str()),
-        BackendKind::Host => None,
-    };
+    let image = (policy.backend == BackendKind::Container).then_some(cfg.container_image.as_str());
     print_start_banner(&session, &plan, backend.name(), image);
 
     let req = ExecRequest {
@@ -373,11 +434,7 @@ pub(crate) fn run(cfg: &Config, params: RunParams) -> anyhow::Result<ExitCode> {
         None,
     );
 
-    let wipe = if params.keep {
-        false
-    } else {
-        params.wipe_after || policy.always_wipe
-    };
+    let wipe = !params.keep && (params.wipe_after || policy.always_wipe());
     if wipe {
         let _ = backend.stop(&session);
         store.wipe(&id)?;
@@ -386,6 +443,30 @@ pub(crate) fn run(cfg: &Config, params: RunParams) -> anyhow::Result<ExitCode> {
 
     let code = outcome?.exit_code;
     Ok(exit_code_from_i32(code))
+}
+
+fn allowlist_env_extras(
+    cfg: &Config,
+    net: crate::plan::NetMode,
+) -> anyhow::Result<Vec<(String, String)>> {
+    if net != crate::plan::NetMode::Allowlist {
+        return Ok(Vec::new());
+    }
+    let al = load_allowlist(cfg)?;
+    if al.hosts.is_empty() {
+        anyhow::bail!(
+            "profile net-allowlist requires a non-empty allowlist file \
+             (set DEVCAGE_NET_ALLOWLIST_FILE); see examples/net-allowlist.txt"
+        );
+    }
+    eprintln!(
+        "devcage: net-allowlist advisory ({} hosts) — not kernel-enforced yet",
+        al.hosts.len()
+    );
+    Ok(vec![
+        ("DEVCAGE_NET_ALLOWLIST".to_owned(), al.joined()),
+        ("DEVCAGE_NET_ENFORCEMENT".to_owned(), "advisory".to_owned()),
+    ])
 }
 
 fn load_allowlist(cfg: &Config) -> anyhow::Result<crate::net_policy::NetAllowlist> {
@@ -399,7 +480,7 @@ fn load_allowlist(cfg: &Config) -> anyhow::Result<crate::net_policy::NetAllowlis
 }
 
 /// `devcage agent` happy path.
-pub(crate) fn agent(
+pub fn agent(
     cfg: &Config,
     agent: Option<String>,
     offline: bool,
@@ -449,7 +530,7 @@ fn container_runtime_available(cfg: &Config) -> bool {
 }
 
 /// Print session event log (JSON lines).
-pub(crate) fn logs(cfg: &Config, session_id: &str) -> anyhow::Result<()> {
+pub fn logs(cfg: &Config, session_id: &str) -> anyhow::Result<()> {
     let text = crate::events::read_events(&cfg.data_dir, session_id)?;
     if text.is_empty() {
         eprintln!("devcage: no events for session {session_id}");
@@ -460,7 +541,7 @@ pub(crate) fn logs(cfg: &Config, session_id: &str) -> anyhow::Result<()> {
 }
 
 /// Write the default net-allowlist example to a path.
-pub(crate) fn init_allowlist(path: &std::path::Path) -> anyhow::Result<()> {
+pub fn init_allowlist(path: &std::path::Path) -> anyhow::Result<()> {
     if path.exists() {
         anyhow::bail!("refusing to overwrite existing file: {}", path.display());
     }
@@ -473,7 +554,7 @@ pub(crate) fn init_allowlist(path: &std::path::Path) -> anyhow::Result<()> {
 }
 
 /// Copy a file/dir from a session home (or under workspace) to a host destination.
-pub(crate) fn export(
+pub fn export(
     cfg: &Config,
     session_id: &str,
     source: &std::path::Path,
@@ -550,7 +631,7 @@ fn copy_dir_recursive(src: &std::path::Path, dest: &std::path::Path) -> anyhow::
 }
 
 /// Interactive shell in a profile.
-pub(crate) fn shell(
+pub fn shell(
     cfg: &Config,
     profile: String,
     workspace: Option<std::path::PathBuf>,
@@ -571,7 +652,7 @@ pub(crate) fn shell(
 }
 
 /// Stop a session and optionally wipe.
-pub(crate) fn stop(cfg: &Config, session_id: Option<String>, wipe: bool) -> anyhow::Result<()> {
+pub fn stop(cfg: &Config, session_id: Option<String>, wipe: bool) -> anyhow::Result<()> {
     let store = SessionStore::new(&cfg.data_dir);
     let id = if let Some(id) = session_id {
         id
@@ -792,6 +873,14 @@ mod tests {
         let (cfg, dir) = temp_cfg();
         let al = load_allowlist(&cfg).expect("load");
         assert!(!al.hosts.is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn explain_offline_json() {
+        use super::explain;
+        let (cfg, dir) = temp_cfg();
+        explain(&cfg, "offline", Some(std::env::current_dir().expect("cwd"))).expect("explain");
         let _ = std::fs::remove_dir_all(dir);
     }
 

@@ -10,7 +10,7 @@ use crate::util::which;
 
 /// Host backend wrapped with an optional Seatbelt profile on macOS.
 #[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct SeatbeltHostBackend;
+pub struct SeatbeltHostBackend;
 
 impl Backend for SeatbeltHostBackend {
     fn name(&self) -> &'static str {
@@ -62,7 +62,7 @@ impl Backend for SeatbeltHostBackend {
 }
 
 /// Generate a restrictive but workable Seatbelt profile for agent-host.
-pub(crate) fn write_seatbelt_profile(
+pub fn write_seatbelt_profile(
     session_id: &str,
     workspace: &Path,
     home: &Path,

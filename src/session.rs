@@ -10,7 +10,7 @@ use crate::plan::BackendKind;
 /// Lifecycle status of a session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum SessionStatus {
+pub enum SessionStatus {
     /// Command is running (or was when last updated).
     Running,
     /// Command finished.
@@ -21,7 +21,7 @@ pub(crate) enum SessionStatus {
 
 /// Persisted session record.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) struct SessionRecord {
+pub struct SessionRecord {
     /// Session id.
     pub id: String,
     /// Profile name.
@@ -45,7 +45,7 @@ pub(crate) struct SessionRecord {
 impl SessionRecord {
     /// Create a new running session record.
     #[must_use]
-    pub(crate) fn new(
+    pub fn new(
         id: String,
         profile: &str,
         backend: BackendKind,
@@ -73,21 +73,21 @@ impl SessionRecord {
 
 /// File-backed session store.
 #[derive(Debug, Clone)]
-pub(crate) struct SessionStore {
+pub struct SessionStore {
     root: PathBuf,
 }
 
 impl SessionStore {
     /// Sessions live under `{data_dir}/sessions`.
     #[must_use]
-    pub(crate) fn new(data_dir: &Path) -> Self {
+    pub fn new(data_dir: &Path) -> Self {
         Self {
             root: data_dir.join("sessions"),
         }
     }
 
     /// Ensure the store directory exists.
-    pub(crate) fn ensure(&self) -> anyhow::Result<()> {
+    pub fn ensure(&self) -> anyhow::Result<()> {
         fs::create_dir_all(&self.root)?;
         Ok(())
     }
@@ -98,12 +98,12 @@ impl SessionStore {
 
     /// Session home directory path for an id.
     #[must_use]
-    pub(crate) fn home_dir(&self, id: &str) -> PathBuf {
+    pub fn home_dir(&self, id: &str) -> PathBuf {
         self.root.join(id).join("home")
     }
 
     /// Persist a session record.
-    pub(crate) fn save(&self, rec: &SessionRecord) -> anyhow::Result<()> {
+    pub fn save(&self, rec: &SessionRecord) -> anyhow::Result<()> {
         self.ensure()?;
         let path = self.path_for(&rec.id);
         let body = serde_json::to_vec_pretty(rec)?;
@@ -112,7 +112,7 @@ impl SessionStore {
     }
 
     /// Load a session by id.
-    pub(crate) fn load(&self, id: &str) -> anyhow::Result<SessionRecord> {
+    pub fn load(&self, id: &str) -> anyhow::Result<SessionRecord> {
         let path = self.path_for(id);
         let bytes = fs::read(&path)
             .map_err(|e| anyhow::anyhow!("session `{id}` not found ({}): {e}", path.display()))?;
@@ -121,7 +121,7 @@ impl SessionStore {
     }
 
     /// List all sessions (best-effort; skips corrupt files).
-    pub(crate) fn list(&self) -> anyhow::Result<Vec<SessionRecord>> {
+    pub fn list(&self) -> anyhow::Result<Vec<SessionRecord>> {
         self.ensure()?;
         let mut out = Vec::new();
         let rd = match fs::read_dir(&self.root) {
@@ -146,7 +146,7 @@ impl SessionStore {
     }
 
     /// Delete session metadata and optionally the home tree.
-    pub(crate) fn wipe(&self, id: &str) -> anyhow::Result<()> {
+    pub fn wipe(&self, id: &str) -> anyhow::Result<()> {
         let meta = self.path_for(id);
         let dir = self.root.join(id);
         if meta.exists() {
@@ -159,7 +159,7 @@ impl SessionStore {
     }
 
     /// Prepare ephemeral home directory for a new session.
-    pub(crate) fn prepare_home(&self, id: &str) -> anyhow::Result<PathBuf> {
+    pub fn prepare_home(&self, id: &str) -> anyhow::Result<PathBuf> {
         let home = self.home_dir(id);
         fs::create_dir_all(&home)?;
         Ok(home)
@@ -168,7 +168,7 @@ impl SessionStore {
 
 /// Generate a unique session id.
 #[must_use]
-pub(crate) fn new_session_id() -> String {
+pub fn new_session_id() -> String {
     let t = unix_now();
     let r = random_u32();
     format!("dc-{t:x}-{r:08x}")
