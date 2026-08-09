@@ -15,6 +15,7 @@
     )
 )]
 
+mod auth_seed;
 mod backend;
 mod banner;
 mod cli;

@@ -378,6 +378,7 @@ pub fn run(cfg: &Config, params: RunParams) -> anyhow::Result<ExitCode> {
     store.ensure()?;
     let id = new_session_id();
     let home = store.prepare_home(&id)?;
+    maybe_seed_agent_auth(policy.name, &home);
     let share_caches = cfg.share_package_caches && policy.allow_package_caches();
     let caches = existing_package_caches(share_caches);
     let plan = build_plan(PlanRequest {
@@ -477,6 +478,30 @@ fn load_allowlist(cfg: &Config) -> anyhow::Result<crate::net_policy::NetAllowlis
         ));
     };
     crate::net_policy::NetAllowlist::load_file(path)
+}
+
+/// Seed Grok auth into ephemeral HOME for `agent-host` (best-effort, logs only).
+fn maybe_seed_agent_auth(profile: &str, home: &std::path::Path) {
+    if profile != "agent-host" {
+        return;
+    }
+    match crate::auth_seed::seed_agent_auth(home) {
+        Ok(seeded) if !seeded.is_empty() => {
+            eprintln!(
+                "devcage: seeded agent auth into session home ({})",
+                seeded.join(", ")
+            );
+        },
+        Ok(_) => {
+            eprintln!(
+                "devcage: warning: no agent auth files found under $HOME \
+                 (e.g. ~/.grok/auth.json); agent may require login"
+            );
+        },
+        Err(e) => {
+            eprintln!("devcage: warning: failed to seed agent auth: {e:#}");
+        },
+    }
 }
 
 /// `devcage agent` happy path.

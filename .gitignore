@@ -17,3 +17,6 @@ lcov.info
 
 # pre-commit
 .pre-commit-cache/
+
+# Local real-world agent proofs (not product artifacts)
+/real_world_*.txt

@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`auth_seed`**: copy `~/.grok/auth.json` (+ config) into ephemeral HOME for `agent-host` so Grok can authenticate without re-login.
+
 ### Changed
 
+- Default agent is **`grok`** (`DEVCAGE_DEFAULT_AGENT`); Claude is not required.
+- `agent-host` keeps `XAI_API_KEY` while still scrubbing cloud/SSH ambient secrets.
 - Clippy: **`all` + `pedantic` fully denied** (no pedantic opt-outs). Refactors: `lib`+thin `main`, policy enums, `PlanRequest`, split verify helpers.
 - Prefer code fixes over `#[allow(clippy::…)]`.
 

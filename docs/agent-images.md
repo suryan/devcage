@@ -43,10 +43,13 @@ devcage agent --host-restricted
 `agent-host` provides:
 
 - Ephemeral `$HOME` (session dir)
-- Scrub of common secret env vars
+- **Seeded agent auth** from the real home: `~/.grok/auth.json`, `~/.grok/config.toml` (copied into the session home so Grok can sign in without re-login)
+- Scrub of ambient cloud/SSH env (`AWS_*`, `GITHUB_TOKEN`, `SSH_AUTH_SOCK`) — **LLM keys like `XAI_API_KEY` are kept** for agent-host
 - Project workspace as cwd
 
 It does **not** provide a container boundary. Prefer container mode when possible.
+
+Default agent is **Grok** (`grok`). No other agent CLI is required for DevCage.
 
 ## Offline / untrusted images
 

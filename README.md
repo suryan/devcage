@@ -1,6 +1,6 @@
 # DevCage
 
-**Easy isolation for AI agent development** — run Grok, Claude Code, Gemini CLI (and friends) so they can edit **this project**, not your home directory or secrets. When you are done, wipe the session.
+**Easy isolation for AI agent development** — run **Grok** (default) so it can edit **this project**, not your home directory or secrets. When you are done, wipe the session. Other agent CLIs work if they are on `PATH` / in the cage image.
 
 > **Status:** **MVP** — container isolation for `agent`/`offline` (Docker/Podman); break-glass `host`. See the [PRD](docs/product_requirements.md).
 

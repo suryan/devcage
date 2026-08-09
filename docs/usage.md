@@ -86,7 +86,7 @@ devcage session
 |----------|---------|
 | `DEVCAGE_WORKSPACE` | Project path (default: cwd) |
 | `DEVCAGE_DEFAULT_PROFILE` | Default for run/shell (`agent`) |
-| `DEVCAGE_DEFAULT_AGENT` | Agent binary name in image (`claude`) |
+| `DEVCAGE_DEFAULT_AGENT` | Agent binary name (`grok` by default) |
 | `DEVCAGE_CONTAINER_RUNTIME` | `docker` or `podman` |
 | `DEVCAGE_CONTAINER_IMAGE` | Image (default Alpine 3.20) |
 | `DEVCAGE_DATA_DIR` | Sessions + ephemeral homes |

@@ -45,7 +45,12 @@ impl Backend for SeatbeltHostBackend {
         cmd.env("HOME", &req.plan.ephemeral_home);
         cmd.env("DEVCAGE_PROFILE", &req.plan.profile);
         cmd.env("DEVCAGE_ISOLATION", "seatbelt");
-        for key in super::host::SENSITIVE_ENV {
+        let scrub = if req.plan.profile == "agent-host" {
+            super::host::AGENT_HOST_SCRUB_ENV
+        } else {
+            super::host::HOST_SCRUB_ENV
+        };
+        for key in scrub {
             cmd.env_remove(*key);
         }
         for (k, v) in &req.plan.env_extras {

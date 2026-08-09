@@ -9,8 +9,8 @@ use crate::session::SessionRecord;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct HostBackend;
 
-/// Env keys cleared for host-profile children (defense in depth only).
-pub const SENSITIVE_ENV: &[&str] = &[
+/// Env keys always scrubbed on break-glass `host` profile.
+pub const HOST_SCRUB_ENV: &[&str] = &[
     "AWS_SECRET_ACCESS_KEY",
     "AWS_ACCESS_KEY_ID",
     "AWS_SESSION_TOKEN",
@@ -18,6 +18,17 @@ pub const SENSITIVE_ENV: &[&str] = &[
     "GH_TOKEN",
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
+    "XAI_API_KEY",
+    "SSH_AUTH_SOCK",
+];
+
+/// Env keys scrubbed for `agent-host` (keep LLM provider keys; drop cloud/SSH ambient).
+pub const AGENT_HOST_SCRUB_ENV: &[&str] = &[
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SESSION_TOKEN",
+    "GITHUB_TOKEN",
+    "GH_TOKEN",
     "SSH_AUTH_SOCK",
 ];
 
@@ -40,14 +51,19 @@ impl Backend for HostBackend {
         // Ephemeral HOME so tools prefer session home when they honor $HOME.
         cmd.env("HOME", &req.plan.ephemeral_home);
         cmd.env("DEVCAGE_PROFILE", &req.plan.profile);
-        if req.plan.profile == "agent-host" {
+        let scrub = if req.plan.profile == "agent-host" {
             cmd.env("DEVCAGE_ISOLATION", "host-restricted");
+            // Real host home for tools that still resolve absolute paths (last resort).
+            if let Ok(real) = std::env::var("HOME") {
+                cmd.env("DEVCAGE_REAL_HOME", real);
+            }
+            AGENT_HOST_SCRUB_ENV
         } else {
             cmd.env("DEVCAGE_BREAK_GLASS", "1");
             cmd.env("DEVCAGE_ISOLATION", "host");
-        }
-        // Best-effort: drop common secret env vars from the child (not a real sandbox).
-        for key in SENSITIVE_ENV {
+            HOST_SCRUB_ENV
+        };
+        for key in scrub {
             cmd.env_remove(*key);
         }
         for (k, v) in &req.plan.env_extras {

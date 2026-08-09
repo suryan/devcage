@@ -30,7 +30,7 @@ impl Config {
             data_dir,
             container_runtime: None,
             container_image: "docker.io/library/alpine:3.20".to_owned(),
-            default_agent: "claude".to_owned(),
+            default_agent: "grok".to_owned(),
             share_package_caches: false,
             agent_host_fallback: false,
             net_allowlist_file: None,
@@ -48,7 +48,7 @@ impl Config {
         let container_image = std::env::var("DEVCAGE_CONTAINER_IMAGE")
             .unwrap_or_else(|_| "docker.io/library/alpine:3.20".to_owned());
         let default_agent =
-            std::env::var("DEVCAGE_DEFAULT_AGENT").unwrap_or_else(|_| "claude".to_owned());
+            std::env::var("DEVCAGE_DEFAULT_AGENT").unwrap_or_else(|_| "grok".to_owned());
         let share_package_caches = env_truthy("DEVCAGE_SHARE_PACKAGE_CACHES");
         // Default true: macOS users without Docker can still run host agents.
         let agent_host_fallback = !env_falsy("DEVCAGE_AGENT_HOST_FALLBACK");

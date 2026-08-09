@@ -28,7 +28,7 @@ pub enum Commands {
     },
     /// Run an AI agent CLI inside a cage (happy path).
     Agent {
-        /// Agent command name (default: `DEVCAGE_DEFAULT_AGENT` or `claude`).
+        /// Agent command name (default: `DEVCAGE_DEFAULT_AGENT` or `grok`).
         #[arg(env = "DEVCAGE_DEFAULT_AGENT")]
         agent: Option<String>,
         /// Use offline profile (no network) instead of agent (requires container).
@@ -166,7 +166,7 @@ mod tests {
 
     #[test]
     fn parses_agent_offline() {
-        let cli = Cli::try_parse_from(["devcage", "agent", "--offline", "claude"]).expect("parse");
+        let cli = Cli::try_parse_from(["devcage", "agent", "--offline", "grok"]).expect("parse");
         let Commands::Agent {
             agent,
             offline,
@@ -178,7 +178,7 @@ mod tests {
         };
         assert!(offline);
         assert!(!host_restricted);
-        assert_eq!(agent.as_deref(), Some("claude"));
+        assert_eq!(agent.as_deref(), Some("grok"));
     }
 
     #[test]
