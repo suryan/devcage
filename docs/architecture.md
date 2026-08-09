@@ -16,11 +16,17 @@ d2 docs/flow.d2 docs/flow.svg
 
 ## North star
 
-> One command runs an AI agent in a disposable cage: it can edit this project, not the host home or secrets; wipe when done.
+> Disposable **execution venues** for agent/dev work: project-scoped, no host secrets mounted, wipe when done.
+
+**Preferred daily model for Grok** is **not** “put the whole agent in a container.” It is **process containment of Grok’s built-ins** plus DevCage only for deep/untrusted jobs. See **[recommended-stack.md](./recommended-stack.md)**.
 
 ```text
-devcage agent  →  profile=agent  →  container backend  →  agent process
-                      ↑
+# Daily (Grok)
+grok --sandbox + permissions + mcp-guard + secret-launcher + pkg-guard
+
+# Deep cage (DevCage)
+devcage run|agent  →  profile  →  container|host backend  →  command
+                         ↑
               project RW + ephemeral home + secret denylist
 ```
 
@@ -34,16 +40,17 @@ devcage agent  →  profile=agent  →  container backend  →  agent process
 | **Backend** | MVP: **container** only |
 | **Config** | env / `local.env`; optional minimal `.devcage.toml` later |
 
-## Layering with pkg-guard (optional)
+## Layering with the rest of the stack
 
 ```text
-Host PATH
-  optional: pkg-guard shims (uvx/npx policy)
-       → devcage agent|run (FS/net cage)
-            → agent / shell / package manager
+Grok (host, built-in tools)
+  ├─ --sandbox / permission rules     (process containment)
+  ├─ MCP → mcp-guard → secret-launcher → MCP servers
+  ├─ PATH: pkg-guard shims (uvx/npx)
+  └─ optional: devcage run|agent      (deep container venue)
 ```
 
-Neither requires the other.
+None of these replace each other. Details: [recommended-stack.md](./recommended-stack.md).
 
 ## Module map (`src/`)
 

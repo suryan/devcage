@@ -2,6 +2,8 @@
 
 **Status:** MVP runtime — `agent` / `offline` use Docker or Podman; `host` is break-glass without container isolation.
 
+**Daily Grok workflow (recommended):** do **not** put every edit behind DevCage. Use Grok `--sandbox` + permissions + your MCP/key stack; call DevCage for untrusted/offline/Linux jobs. See [recommended-stack.md](./recommended-stack.md) and [examples/grok/](../examples/grok/).
+
 ## Install (from source)
 
 ```bash

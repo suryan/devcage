@@ -1,26 +1,38 @@
 # DevCage
 
-**Easy isolation for AI agent development** — run **Grok** (default) so it can edit **this project**, not your home directory or secrets. When you are done, wipe the session. Other agent CLIs work if they are on `PATH` / in the cage image.
+**Optional deep cage for untrusted / offline / Linux commands** — not a replacement for Grok’s built-in tools or your MCP/key stack.
 
-> **Status:** **MVP** — container isolation for `agent`/`offline` (Docker/Podman); break-glass `host`. See the [PRD](docs/product_requirements.md).
+> **Recommended daily model (Grok):** keep built-ins; contain the **process** with Grok `--sandbox` + permissions; keep keys via **mcp-secret-launcher** + **mcp-guard**; packages via **pkg-guard**. Use DevCage when you need a disposable container venue. See [docs/recommended-stack.md](docs/recommended-stack.md).
+
+> **Status:** **MVP** — container + host backends. See the [PRD](docs/product_requirements.md).
 
 | | |
 |--|--|
 | **Product** | DevCage |
 | **CLI** | `devcage` |
 | **Language** | Rust |
-| **North star** | One command → agent in a disposable cage |
+| **Daily path** | Grok sandbox + your secret/MCP/package tools |
+| **DevCage role** | Explicit caged `run` / `agent` when host sandbox is not enough |
 
 ## Pitch
 
 ```text
-devcage agent          # project RW, no host secrets, ephemeral home
-devcage agent --offline
+# Daily (keys-first): Grok on host with OS sandbox — see docs/recommended-stack.md
+grok --sandbox workspace
+
+# Deep cage when needed:
+devcage run -p offline -- ./sketchy.sh
+devcage run -p untrusted -- sh
 devcage stop --wipe
 ```
 
-**pkg-guard** (optional) decides whether a package is allowed.
-**DevCage** decides *where* the agent runs and makes that space easy to discard.
+| Tool | Job |
+|------|-----|
+| **Grok sandbox + permissions** | Limit what built-in tools can touch |
+| **mcp-secret-launcher** | Keys in Keychain → MCP env only |
+| **mcp-guard** | MCP tool policy / HITL |
+| **pkg-guard** | `uvx` / `npx` supply chain |
+| **DevCage** | Where a **command** runs (container/offline/untrusted) |
 
 ## Quick start
 
@@ -84,18 +96,22 @@ Closed decisions: [docs/architecture.md](docs/architecture.md#design-decisions-c
 | Doc | Contents |
 |-----|----------|
 | [AGENTS.md](AGENTS.md) | **Project rules** — quality gate, commit habit, changelog |
+| [docs/recommended-stack.md](docs/recommended-stack.md) | **Daily Grok model** — sandbox + keys stack; DevCage optional |
 | [docs/development.md](docs/development.md) | Build, lint, coverage, pre-commit, releases |
 | [docs/product_requirements.md](docs/product_requirements.md) | Goals, FR/NFR, agent wedge, MVP |
 | [docs/architecture.md](docs/architecture.md) | Design + closed decisions |
-| [docs/usage.md](docs/usage.md) | CLI usage (scaffold + intended) |
+| [docs/usage.md](docs/usage.md) | CLI usage |
 | [CHANGELOG.md](CHANGELOG.md) | Keep-a-Changelog history |
 | [docs/agent-images.md](docs/agent-images.md) | Container images + host-restricted agents |
+| [examples/grok/](examples/grok/) | Copy-paste Grok sandbox + permission recipes |
 | [docs/workloads-gui-mobile.md](docs/workloads-gui-mobile.md) | Phase 3 appendix (not core) |
 
 ## Complements
 
-- [pkg-guard](https://github.com/suryan/pkg-guard) — package **policy** (optional)
-- DevCage — execution **venue** (containment)
+- [pkg-guard](https://github.com/suryan/pkg-guard) — package **policy**
+- [mcp-secret-launcher](https://github.com/suryan/mcp-secret-launcher) — Keychain → MCP env
+- [mcp-guard](https://github.com/suryan/mcp-guard) — MCP L7 policy / HITL
+- DevCage — optional **command venue** (container / offline / untrusted)
 
 ## License
 

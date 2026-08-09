@@ -1,0 +1,28 @@
+# Example Grok sandbox profile for keys-first projects.
+# Copy to: <project>/.grok/sandbox.toml
+# Run:     grok --sandbox keys-first
+#
+# Kernel-enforced (Seatbelt on macOS / Landlock+bwrap on Linux).
+# Complements mcp-secret-launcher + mcp-guard + pkg-guard.
+# DevCage is optional for untrusted/offline/Linux jobs — not required for every edit.
+
+[profiles.keys-first]
+extends = "workspace"
+# Child network block is Linux-oriented; on macOS treat as soft guidance.
+# restrict_network = true
+
+# Deny secret material in the tree (read + write/rename). Expand for your layout.
+deny = [
+  "**/.env",
+  "**/.env.*",
+  "**/local.env",
+  "**/*.pem",
+  "**/*.p12",
+  "**/*id_rsa*",
+  "**/*id_ed25519*",
+  "**/.aws/**",
+  "**/.ssh/**",
+  "**/.gnupg/**",
+  "**/credentials.json",
+  "**/service-account*.json",
+]

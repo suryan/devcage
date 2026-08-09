@@ -1,0 +1,48 @@
+# Example Grok permission rules for keys-first projects.
+# Copy to: <project>/.grok/config.toml
+#
+# Policy layer (what the model may call). Pair with:
+#   .grok/sandbox.toml          — kernel FS deny
+#   mcp-guard + secret-launcher — MCP keys
+#   pkg-guard                   — uvx/npx
+#   devcage run …               — optional deep cage for untrusted commands
+#
+# deny always wins over allow and over always-approve.
+
+[permission]
+deny = [
+  # Host escape / secret-adjacent paths (adjust username/home as needed in local overrides)
+  "Read(**/.ssh/**)",
+  "Edit(**/.ssh/**)",
+  "Read(**/.aws/**)",
+  "Edit(**/.aws/**)",
+  "Read(**/.gnupg/**)",
+  "Edit(**/.gnupg/**)",
+  "Read(**/.env)",
+  "Edit(**/.env)",
+  "Read(**/local.env)",
+  "Edit(**/local.env)",
+  "Read(**/*.pem)",
+  "Edit(**/*.pem)",
+
+  # Dangerous host patterns (non-exhaustive)
+  "Bash(rm -rf /*)",
+  "Bash(rm -rf ~*)",
+  "Bash(sudo *)",
+  "Bash(security *)",
+  "Bash(security find-*)",
+]
+
+allow = [
+  # Project-local work
+  "Bash(cargo *)",
+  "Bash(git *)",
+  "Bash(rg *)",
+  "Bash(npm *)",
+  "Bash(npx *)",
+  "Bash(uvx *)",
+  "Bash(make *)",
+
+  # Optional deep cage (DevCage) for untrusted / offline / Linux-only jobs
+  "Bash(devcage *)",
+]
