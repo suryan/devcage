@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-08-09
+
+### Notes
+
+Colima e2e verified; setup-runtime helper
+
+### Changed
+
+- Version bump to 0.5.1 (see releases/v0.5.1.md).
+
+
 ### Fixed
 
 - Quiet `docker kill` when container already removed (`--rm`).
