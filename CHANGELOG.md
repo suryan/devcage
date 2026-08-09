@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-09
+
+### Notes
+
+untrusted profile, verify/pull/clean, container hardening
+
+### Changed
+
+- Version bump to 0.3.0 (see releases/v0.3.0.md).
+
+
+### Added
+
+- Profile **`untrusted`**: network=none, hardened container (`--cap-drop ALL`, `no-new-privileges`), always wipe, no host package caches.
+- Commands: **`verify`** (isolation smoke checks), **`pull`** (image), **`clean`** (wipe session data).
+- Offline/untrusted default wipe; container hardening flags for those profiles.
+- Refuse sensitive workspaces (`.ssh`, `.aws`, …).
+
 ## [0.2.0] - 2026-08-09
 
 ### Notes

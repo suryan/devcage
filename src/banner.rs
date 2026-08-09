@@ -49,6 +49,7 @@ mod tests {
             PathBuf::from("/home"),
             &[],
             false,
+            true,
         );
         let session = SessionRecord::new(
             "dc-test".to_owned(),

@@ -29,9 +29,13 @@ cp local.env.example local.env   # optional
 ./scripts/setup-hooks.sh         # pre-commit quality gate
 ./scripts/build.sh
 cargo run -- doctor
+cargo run -- verify
+cargo run -- run -p host -- /usr/bin/true   # break-glass (no Docker)
 # requires Docker or Podman:
+cargo run -- pull
 cargo run -- run -p offline -- echo hi
-cargo run -- run -p host -- /usr/bin/true   # break-glass
+cargo run -- run -p untrusted -- sh -c 'echo safe'
+./scripts/e2e-container.sh                  # skips if no runtime
 ```
 
 Quality gate (required before commit):

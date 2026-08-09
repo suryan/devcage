@@ -11,12 +11,13 @@ pub(crate) struct BuiltinProfile {
     pub name: &'static str,
     /// One-line summary for humans and JSON output.
     pub summary: &'static str,
-    /// `core` (v0.1) or roadmap tier label.
+    /// `core` or roadmap tier label.
     pub tier: &'static str,
 }
 
-/// Runtime policy for a core profile.
+/// Runtime policy for a profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)] // policy flags map 1:1 to profile knobs
 pub(crate) struct ProfilePolicy {
     /// Profile name.
     pub name: &'static str,
@@ -26,11 +27,17 @@ pub(crate) struct ProfilePolicy {
     pub net: NetMode,
     /// Emit break-glass warnings.
     pub break_glass: bool,
-    /// Core product profile (implemented).
+    /// Always wipe ephemeral home after exit.
+    pub always_wipe: bool,
+    /// Allow optional RO host package cache mounts.
+    pub allow_package_caches: bool,
+    /// Drop Linux capabilities / no-new-privileges in container.
+    pub harden_container: bool,
+    /// Implemented in this release.
     pub implemented: bool,
 }
 
-/// Core profiles shipped in the product wedge.
+/// Core + implemented profiles.
 pub(crate) const CORE_PROFILES: &[BuiltinProfile] = &[
     BuiltinProfile {
         name: "agent",
@@ -39,7 +46,12 @@ pub(crate) const CORE_PROFILES: &[BuiltinProfile] = &[
     },
     BuiltinProfile {
         name: "offline",
-        summary: "Same FS isolation as agent; network=none (enforced)",
+        summary: "Same FS isolation as agent; network=none (enforced); wipe by default",
+        tier: "core",
+    },
+    BuiltinProfile {
+        name: "untrusted",
+        summary: "Strict install/experiment cage: network=none, hardened container, always wipe, no host caches",
         tier: "core",
     },
     BuiltinProfile {
@@ -49,21 +61,14 @@ pub(crate) const CORE_PROFILES: &[BuiltinProfile] = &[
     },
 ];
 
-/// Roadmap profile names (not v0.1 product surface).
-pub(crate) const ROADMAP_PROFILES: &[BuiltinProfile] = &[
-    BuiltinProfile {
-        name: "untrusted",
-        summary: "Stricter wipe-oriented session for one-off package experiments",
-        tier: "phase2",
-    },
-    BuiltinProfile {
-        name: "net-allowlist",
-        summary: "Legacy name / future egress policy — not claimed until enforceable",
-        tier: "phase2",
-    },
-];
+/// Roadmap profile names (not implemented).
+pub(crate) const ROADMAP_PROFILES: &[BuiltinProfile] = &[BuiltinProfile {
+    name: "net-allowlist",
+    summary: "Future egress policy — not claimed until enforceable",
+    tier: "phase2",
+}];
 
-/// Resolve policy for a core profile name.
+/// Resolve policy for a profile name.
 pub(crate) fn resolve_policy(name: &str) -> anyhow::Result<ProfilePolicy> {
     match name {
         "agent" => Ok(ProfilePolicy {
@@ -71,6 +76,9 @@ pub(crate) fn resolve_policy(name: &str) -> anyhow::Result<ProfilePolicy> {
             backend: BackendKind::Container,
             net: NetMode::Full,
             break_glass: false,
+            always_wipe: false,
+            allow_package_caches: true,
+            harden_container: false,
             implemented: true,
         }),
         "offline" => Ok(ProfilePolicy {
@@ -78,6 +86,19 @@ pub(crate) fn resolve_policy(name: &str) -> anyhow::Result<ProfilePolicy> {
             backend: BackendKind::Container,
             net: NetMode::None,
             break_glass: false,
+            always_wipe: true,
+            allow_package_caches: true,
+            harden_container: true,
+            implemented: true,
+        }),
+        "untrusted" => Ok(ProfilePolicy {
+            name: "untrusted",
+            backend: BackendKind::Container,
+            net: NetMode::None,
+            break_glass: false,
+            always_wipe: true,
+            allow_package_caches: false,
+            harden_container: true,
             implemented: true,
         }),
         "host" => Ok(ProfilePolicy {
@@ -85,12 +106,17 @@ pub(crate) fn resolve_policy(name: &str) -> anyhow::Result<ProfilePolicy> {
             backend: BackendKind::Host,
             net: NetMode::Host,
             break_glass: true,
+            always_wipe: false,
+            allow_package_caches: false,
+            harden_container: false,
             implemented: true,
         }),
-        "untrusted" | "net-allowlist" => anyhow::bail!(
-            "profile `{name}` is reserved for a later phase and is not implemented yet"
+        "net-allowlist" => anyhow::bail!(
+            "profile `net-allowlist` is reserved until egress allowlisting is enforceable"
         ),
-        other => anyhow::bail!("unknown profile `{other}`; core profiles: agent, offline, host"),
+        other => anyhow::bail!(
+            "unknown profile `{other}`; core profiles: agent, offline, untrusted, host"
+        ),
     }
 }
 
@@ -119,7 +145,7 @@ pub(crate) fn profile_list_json() -> Value {
     }
     json!({
         "profiles": profiles,
-        "message": "Core profiles: agent, offline, host. GUI/mobile are phase 3 only.",
+        "message": "Core: agent, offline, untrusted, host. net-allowlist is phase 2.",
     })
 }
 
@@ -143,6 +169,9 @@ pub(crate) fn profile_show_json(name: &str) -> Value {
         }),
         "network": policy.map(|p| p.net.label()),
         "break_glass": policy.map(|p| p.break_glass),
+        "always_wipe": policy.map(|p| p.always_wipe),
+        "allow_package_caches": policy.map(|p| p.allow_package_caches),
+        "harden_container": policy.map(|p| p.harden_container),
     })
 }
 
@@ -153,9 +182,27 @@ mod tests {
     use serde_json::Value;
 
     #[test]
-    fn core_profiles_include_agent_offline_host() {
+    fn core_profiles_include_untrusted() {
         let names: Vec<&str> = CORE_PROFILES.iter().map(|p| p.name).collect();
-        assert_eq!(names, vec!["agent", "offline", "host"]);
+        assert!(names.contains(&"untrusted"));
+        assert!(names.contains(&"agent"));
+    }
+
+    #[test]
+    fn untrusted_is_strict() {
+        let p = resolve_policy("untrusted").expect("untrusted");
+        assert_eq!(p.net, NetMode::None);
+        assert!(p.always_wipe);
+        assert!(!p.allow_package_caches);
+        assert!(p.harden_container);
+        assert_eq!(p.backend, BackendKind::Container);
+    }
+
+    #[test]
+    fn offline_wipes_by_default() {
+        let p = resolve_policy("offline").expect("offline");
+        assert!(p.always_wipe);
+        assert!(p.harden_container);
     }
 
     #[test]
@@ -163,12 +210,7 @@ mod tests {
         let p = resolve_policy("agent").expect("agent");
         assert_eq!(p.backend, BackendKind::Container);
         assert_eq!(p.net, NetMode::Full);
-    }
-
-    #[test]
-    fn offline_policy_is_net_none() {
-        let p = resolve_policy("offline").expect("offline");
-        assert_eq!(p.net, NetMode::None);
+        assert!(!p.always_wipe);
     }
 
     #[test]
@@ -184,11 +226,11 @@ mod tests {
     }
 
     #[test]
-    fn profile_list_json_marks_core_implemented() {
+    fn profile_list_json_marks_untrusted_implemented() {
         let v = profile_list_json();
         let arr = v.get("profiles").and_then(Value::as_array).expect("arr");
-        let agent = arr.iter().find(|x| x["name"] == "agent").expect("agent");
-        assert_eq!(agent["implemented"], true);
+        let u = arr.iter().find(|x| x["name"] == "untrusted").expect("u");
+        assert_eq!(u["implemented"], true);
     }
 
     #[test]

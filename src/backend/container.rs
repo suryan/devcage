@@ -145,6 +145,12 @@ pub(crate) fn build_docker_args(
             // Full container network (bridge/default). Host net not used for container profile.
         },
     }
+    if plan.harden_container {
+        args.push("--security-opt".to_owned());
+        args.push("no-new-privileges".to_owned());
+        args.push("--cap-drop".to_owned());
+        args.push("ALL".to_owned());
+    }
     // Workspace
     args.push("-v".to_owned());
     args.push(format!(
@@ -201,6 +207,7 @@ mod tests {
             PathBuf::from("/tmp/home"),
             &[],
             false,
+            true,
         );
         let args = build_docker_args(
             Some("devcage-test"),
@@ -215,6 +222,12 @@ mod tests {
         assert!(args.contains(&"--rm".to_owned()));
         assert!(args.iter().any(|a| a.contains("/proj:/workspace:rw")));
         assert!(args.iter().any(|a| a.starts_with("HOME=")));
+        assert!(args
+            .windows(2)
+            .any(|w| w[0] == "--cap-drop" && w[1] == "ALL"));
+        assert!(args
+            .windows(2)
+            .any(|w| w[0] == "--security-opt" && w[1] == "no-new-privileges"));
     }
 
     #[test]
@@ -227,12 +240,14 @@ mod tests {
             PathBuf::from("/tmp/home"),
             &[],
             false,
+            false,
         );
         let args = build_docker_args(None, &plan, "alpine:3.20", &["sh".to_owned()], true);
         assert!(!args
             .windows(2)
             .any(|w| w[0] == "--network" && w[1] == "none"));
         assert!(args.contains(&"-t".to_owned()));
+        assert!(!args.iter().any(|a| a == "--cap-drop"));
     }
 
     #[test]

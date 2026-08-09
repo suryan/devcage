@@ -18,6 +18,19 @@ pub(crate) struct Config {
 }
 
 impl Config {
+    /// Construct a config for tests (no env required).
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn for_test(data_dir: PathBuf) -> Self {
+        Self {
+            data_dir,
+            container_runtime: None,
+            container_image: "docker.io/library/alpine:3.20".to_owned(),
+            default_agent: "claude".to_owned(),
+            share_package_caches: false,
+        }
+    }
+
     /// Load from environment with portable defaults.
     #[must_use]
     pub(crate) fn from_env() -> Self {

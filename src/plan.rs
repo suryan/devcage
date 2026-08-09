@@ -66,10 +66,13 @@ pub(crate) struct IsolationPlan {
     pub extra_mounts: Vec<BindMount>,
     /// Loud break-glass warning required.
     pub break_glass: bool,
+    /// Apply container hardening flags (cap-drop, no-new-privileges).
+    pub harden_container: bool,
 }
 
 /// Build mount list for the workspace + home + optional caches.
 #[must_use]
+#[allow(clippy::too_many_arguments)] // plan builder packs orthogonal fields
 pub(crate) fn build_plan(
     profile: &str,
     backend: BackendKind,
@@ -78,6 +81,7 @@ pub(crate) fn build_plan(
     ephemeral_home: PathBuf,
     package_cache_sources: &[PathBuf],
     break_glass: bool,
+    harden_container: bool,
 ) -> IsolationPlan {
     let mut extra_mounts = Vec::new();
     for (i, src) in package_cache_sources.iter().enumerate() {
@@ -99,12 +103,35 @@ pub(crate) fn build_plan(
         home_in_cage: PathBuf::from("/home/devcage"),
         extra_mounts,
         break_glass,
+        harden_container,
     }
+}
+
+/// Reject using sensitive host directories as the project workspace.
+pub(crate) fn ensure_workspace_safe(workspace: &Path) -> anyhow::Result<()> {
+    if is_sensitive_path(workspace) {
+        anyhow::bail!(
+            "refusing workspace under sensitive path: {} \
+             (choose a project directory, not secrets/config dirs)",
+            workspace.display()
+        );
+    }
+    // Also refuse if any path component is a classic secret directory name.
+    for c in workspace.components() {
+        if let Some(s) = c.as_os_str().to_str() {
+            if matches!(s, ".ssh" | ".gnupg" | ".aws" | ".azure" | ".kube") {
+                anyhow::bail!(
+                    "refusing workspace path containing `{s}`: {}",
+                    workspace.display()
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Host paths that must never be auto-mounted as the project (secret dirs).
 #[must_use]
-#[cfg_attr(not(test), allow(dead_code))] // reserved for mount validation in follow-ups
 pub(crate) fn is_sensitive_path(path: &Path) -> bool {
     let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
     matches!(
@@ -131,7 +158,8 @@ pub(crate) fn default_package_cache_candidates(home: &Path) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_plan, default_package_cache_candidates, is_sensitive_path, BackendKind, NetMode,
+        build_plan, default_package_cache_candidates, ensure_workspace_safe, is_sensitive_path,
+        BackendKind, NetMode,
     };
     use std::path::PathBuf;
 
@@ -151,6 +179,12 @@ mod tests {
     }
 
     #[test]
+    fn ensure_workspace_safe_rejects_ssh() {
+        assert!(ensure_workspace_safe(PathBuf::from("/home/u/.ssh").as_path()).is_err());
+        assert!(ensure_workspace_safe(PathBuf::from("/home/u/projects/app").as_path()).is_ok());
+    }
+
+    #[test]
     fn build_plan_adds_ro_caches_when_dirs_exist() {
         let dir = std::env::temp_dir().join(format!("devcage-cache-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("mkdir");
@@ -161,6 +195,7 @@ mod tests {
             PathBuf::from("/proj"),
             PathBuf::from("/tmp/home"),
             std::slice::from_ref(&dir),
+            false,
             false,
         );
         assert_eq!(plan.extra_mounts.len(), 1);

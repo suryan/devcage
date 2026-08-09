@@ -17,13 +17,16 @@ Needs **Docker or Podman** for isolated profiles. `devcage doctor` reports avail
 
 ```bash
 devcage doctor
+devcage verify                             # isolation smoke checks
+devcage pull                               # pull DEVCAGE_CONTAINER_IMAGE
 # with Docker/Podman:
-devcage run -p offline -- echo hi          # no network
+devcage run -p offline -- echo hi          # no network; wipe by default
+devcage run -p untrusted -- sh             # hardened + always wipe
 devcage run -p agent -- sh -c 'uname -a'   # full container net
 devcage shell -p offline
-devcage agent                              # runs $DEVCAGE_DEFAULT_AGENT in container image
-devcage agent --offline claude
-devcage stop --wipe                        # last/running session
+devcage agent                              # runs agent inside container image
+devcage stop --wipe
+devcage clean                              # wipe exited sessions
 ```
 
 ### Host break-glass (no real isolation)
@@ -51,7 +54,8 @@ devcage session
 | Profile | Backend | Network | Notes |
 |---------|---------|---------|--------|
 | **`agent`** | container | full (honest label) | Default; needs image with your tools/agent |
-| **`offline`** | container | **none** | Enforced via `--network none` |
+| **`offline`** | container | **none** | Hardened; wipe by default |
+| **`untrusted`** | container | **none** | Hardened; always wipe; no host caches |
 | **`host`** | host process | unrestricted | Break-glass; ephemeral `$HOME` only |
 
 ## Commands
@@ -65,6 +69,9 @@ devcage session
 | `devcage shell -p <profile>` | `/bin/sh -l` in cage |
 | `devcage agent [name] [--offline]` | Happy path agent launch |
 | `devcage stop [--wipe] [id]` | Kill container if any; wipe data |
+| `devcage verify` | Isolation smoke checks (JSON) |
+| `devcage pull` | Pull configured container image |
+| `devcage clean [--all]` | Wipe exited (or all) session dirs |
 
 ## Configuration
 

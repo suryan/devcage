@@ -84,3 +84,29 @@ fn status_succeeds() {
     let output = bin().arg("status").output().expect("run status");
     assert!(output.status.success());
 }
+
+#[test]
+fn verify_runs() {
+    let output = bin().arg("verify").output().expect("verify");
+    // May exit 1 without Docker; must still print JSON checks.
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("checks"), "stdout={stdout}");
+}
+
+#[test]
+fn clean_runs() {
+    let output = bin().arg("clean").output().expect("clean");
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn profile_list_includes_untrusted() {
+    let output = bin().args(["profile", "list"]).output().expect("list");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("untrusted"));
+}

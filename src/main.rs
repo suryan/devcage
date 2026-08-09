@@ -100,5 +100,14 @@ fn dispatch(cfg: &Config, cli: Cli) -> anyhow::Result<ExitCode> {
             orchestrate::stop(cfg, session, wipe)?;
             Ok(ExitCode::SUCCESS)
         },
+        Commands::Verify => orchestrate::verify(cfg),
+        Commands::Pull => {
+            orchestrate::pull(cfg)?;
+            Ok(ExitCode::SUCCESS)
+        },
+        Commands::Clean { all } => {
+            orchestrate::clean(cfg, all)?;
+            Ok(ExitCode::SUCCESS)
+        },
     }
 }

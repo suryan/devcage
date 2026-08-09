@@ -43,7 +43,7 @@ pub(crate) enum Commands {
     },
     /// Run a command inside a profile.
     Run {
-        /// Profile name: `agent` | `offline` | `host`.
+        /// Profile name: `agent` | `offline` | `untrusted` | `host`.
         #[arg(
             long,
             short = 'p',
@@ -63,7 +63,7 @@ pub(crate) enum Commands {
     },
     /// Interactive shell inside a profile.
     Shell {
-        /// Profile name: `agent` | `offline` | `host`.
+        /// Profile name: `agent` | `offline` | `untrusted` | `host`.
         #[arg(
             long,
             short = 'p',
@@ -85,6 +85,16 @@ pub(crate) enum Commands {
         /// Discard ephemeral volumes for the session.
         #[arg(long)]
         wipe: bool,
+    },
+    /// Isolation smoke checks (workspace safety, runtime, optional container probe).
+    Verify,
+    /// Pull the configured container image.
+    Pull,
+    /// Wipe exited/stopped sessions from the data directory.
+    Clean {
+        /// Also wipe sessions still marked running.
+        #[arg(long)]
+        all: bool,
     },
 }
 
