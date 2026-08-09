@@ -34,7 +34,8 @@ pub(crate) fn doctor(cfg: &Config) -> anyhow::Result<()> {
         "status": "mvp",
         "readiness": readiness,
         "focus": "AI agent development isolation",
-        "core_profiles": ["agent", "offline", "untrusted", "host"],
+        "core_profiles": ["agent", "agent-host", "offline", "untrusted", "host"],
+        "agent_host_fallback": cfg.agent_host_fallback,
         "backends": {
             "container": {
                 "mvp": true,
@@ -48,11 +49,12 @@ pub(crate) fn doctor(cfg: &Config) -> anyhow::Result<()> {
         },
         "data_dir": cfg.data_dir,
         "notes": [
-            "Profiles agent/offline/untrusted require Docker or Podman.",
+            "Profiles agent/offline/untrusted require Docker or Podman (unless agent host-fallback).",
+            "devcage agent uses agent-host when no container runtime and DEVCAGE_AGENT_HOST_FALLBACK is not off.",
+            "agent-host: ephemeral HOME + env scrub on the host OS — not a container.",
             "offline and untrusted use network=none + container hardening (cap-drop ALL).",
-            "Host-native macOS agent binaries need a Linux image that provides them, or profile host.",
             "Network for profile `agent` is full container net (not an allowlist).",
-            "Run `devcage verify` for isolation smoke checks; `devcage pull` to fetch the image.",
+            "See docs/agent-images.md for container images.",
         ],
     });
     println!("{}", serde_json::to_string_pretty(&report)?);
@@ -348,17 +350,38 @@ pub(crate) fn agent(
     cfg: &Config,
     agent: Option<String>,
     offline: bool,
+    host_restricted: bool,
     workspace: Option<std::path::PathBuf>,
     args: Vec<String>,
 ) -> anyhow::Result<ExitCode> {
-    let profile = if offline { "offline" } else { "agent" };
+    if offline && host_restricted {
+        anyhow::bail!("--offline and --host-restricted are mutually exclusive");
+    }
+    let profile = if offline {
+        "offline".to_owned()
+    } else if host_restricted {
+        "agent-host".to_owned()
+    } else if container_runtime_available(cfg) {
+        "agent".to_owned()
+    } else if cfg.agent_host_fallback {
+        eprintln!(
+            "devcage: no container runtime; falling back to agent-host \
+             (set DEVCAGE_AGENT_HOST_FALLBACK=0 to disable)"
+        );
+        "agent-host".to_owned()
+    } else {
+        anyhow::bail!(
+            "no container runtime for profile `agent`; install Docker/Podman, \
+             use `devcage agent --host-restricted`, or set DEVCAGE_AGENT_HOST_FALLBACK=1"
+        );
+    };
     let name = agent.unwrap_or_else(|| cfg.default_agent.clone());
     let mut command = vec![name];
     command.extend(args);
     run(
         cfg,
         RunParams {
-            profile: profile.to_owned(),
+            profile,
             workspace,
             command,
             tty: true,
@@ -366,6 +389,87 @@ pub(crate) fn agent(
             keep: false,
         },
     )
+}
+
+fn container_runtime_available(cfg: &Config) -> bool {
+    detect_container_runtime(cfg.container_runtime.as_deref()).is_ok()
+}
+
+/// Copy a file/dir from a session home (or under workspace) to a host destination.
+pub(crate) fn export(
+    cfg: &Config,
+    session_id: &str,
+    source: &std::path::Path,
+    dest: &std::path::Path,
+) -> anyhow::Result<()> {
+    let store = SessionStore::new(&cfg.data_dir);
+    let rec = store.load(session_id)?;
+    let resolved = resolve_export_source(&rec, source)?;
+    if !resolved.exists() {
+        anyhow::bail!("source does not exist: {}", resolved.display());
+    }
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    if resolved.is_dir() {
+        copy_dir_recursive(&resolved, dest)?;
+    } else {
+        std::fs::copy(&resolved, dest)?;
+    }
+    eprintln!(
+        "devcage: exported {} -> {}",
+        resolved.display(),
+        dest.display()
+    );
+    Ok(())
+}
+
+fn resolve_export_source(
+    rec: &crate::session::SessionRecord,
+    source: &std::path::Path,
+) -> anyhow::Result<std::path::PathBuf> {
+    if source.is_absolute() {
+        // Must stay under session home or workspace.
+        let under_home = source.starts_with(&rec.home);
+        let under_ws = source.starts_with(&rec.workspace);
+        if under_home || under_ws {
+            return Ok(source.to_path_buf());
+        }
+        anyhow::bail!(
+            "absolute export source must be under session home or workspace\n  home={}\n  workspace={}",
+            rec.home.display(),
+            rec.workspace.display()
+        );
+    }
+    let from_home = rec.home.join(source);
+    if from_home.exists() {
+        return Ok(from_home);
+    }
+    let from_ws = rec.workspace.join(source);
+    if from_ws.exists() {
+        return Ok(from_ws);
+    }
+    anyhow::bail!(
+        "relative source not found under session home or workspace: {}",
+        source.display()
+    )
+}
+
+fn copy_dir_recursive(src: &std::path::Path, dest: &std::path::Path) -> anyhow::Result<()> {
+    std::fs::create_dir_all(dest)?;
+    for ent in std::fs::read_dir(src)? {
+        let ent = ent?;
+        let ty = ent.file_type()?;
+        let to = dest.join(ent.file_name());
+        if ty.is_dir() {
+            copy_dir_recursive(&ent.path(), &to)?;
+        } else if ty.is_file() {
+            std::fs::copy(ent.path(), to)?;
+        } else {
+            // Skip symlinks/specials for export safety.
+        }
+    }
+    Ok(())
 }
 
 /// Interactive shell in a profile.
@@ -533,5 +637,47 @@ mod tests {
         assert_eq!(exit_code_from_i32(0), ExitCode::SUCCESS);
         assert_eq!(exit_code_from_i32(2), ExitCode::from(2));
         assert_eq!(exit_code_from_i32(-1), ExitCode::from(1));
+    }
+
+    #[test]
+    fn export_from_session_home() {
+        use super::export;
+        let (cfg, dir) = temp_cfg();
+        let store = SessionStore::new(&cfg.data_dir);
+        let id = new_session_id();
+        let home = store.prepare_home(&id).expect("home");
+        let artifact = home.join("out.txt");
+        std::fs::write(&artifact, b"hello").expect("write");
+        let rec = SessionRecord::new(
+            id.clone(),
+            "agent-host",
+            BackendKind::Host,
+            PathBuf::from("/ws"),
+            home,
+            None,
+        );
+        store.save(&rec).expect("save");
+        let dest = dir.join("exported.txt");
+        export(&cfg, &id, PathBuf::from("out.txt").as_path(), &dest).expect("export");
+        assert_eq!(std::fs::read_to_string(dest).expect("read"), "hello");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn agent_host_restricted_runs_true() {
+        use super::agent;
+        let (cfg, dir) = temp_cfg();
+        // Use /usr/bin/true as the "agent"
+        let code = agent(
+            &cfg,
+            Some("/usr/bin/true".to_owned()),
+            false,
+            true,
+            Some(std::env::current_dir().expect("cwd")),
+            vec![],
+        )
+        .expect("agent");
+        assert_eq!(code, ExitCode::SUCCESS);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

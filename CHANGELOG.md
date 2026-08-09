@@ -7,8 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-09
+
+### Notes
+
+agent-host fallback, export, agent-images docs
+
+### Changed
+
+- Version bump to 0.4.0 (see releases/v0.4.0.md).
+
+
 ### Added
 
+- Profile **`agent-host`**: host-restricted agent (ephemeral HOME + env scrub).
+- `devcage agent --host-restricted` and default host fallback when no container (`DEVCAGE_AGENT_HOST_FALLBACK`).
+- `devcage export <session> <src> <dest>` for promoting artifacts out of session home.
+- Docs: [docs/agent-images.md](docs/agent-images.md).
 - `--keep` on `run`/`shell` to override profile default wipe.
 - Doctor `readiness` field (`ready` | `degraded_host_only` | `not_ready`).
 - Host profile strips common secret env vars from the child process.

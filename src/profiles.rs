@@ -41,7 +41,12 @@ pub(crate) struct ProfilePolicy {
 pub(crate) const CORE_PROFILES: &[BuiltinProfile] = &[
     BuiltinProfile {
         name: "agent",
-        summary: "Default AI coding: project RW, ephemeral home, no host secrets; network=full (container), labeled honestly",
+        summary: "Default AI coding in a Linux container; network=full (container), labeled honestly",
+        tier: "core",
+    },
+    BuiltinProfile {
+        name: "agent-host",
+        summary: "Host-restricted agent: ephemeral HOME + env scrub on the host OS (not a container)",
         tier: "core",
     },
     BuiltinProfile {
@@ -81,6 +86,16 @@ pub(crate) fn resolve_policy(name: &str) -> anyhow::Result<ProfilePolicy> {
             harden_container: false,
             implemented: true,
         }),
+        "agent-host" => Ok(ProfilePolicy {
+            name: "agent-host",
+            backend: BackendKind::Host,
+            net: NetMode::Host,
+            break_glass: true,
+            always_wipe: false,
+            allow_package_caches: true,
+            harden_container: false,
+            implemented: true,
+        }),
         "offline" => Ok(ProfilePolicy {
             name: "offline",
             backend: BackendKind::Container,
@@ -115,7 +130,7 @@ pub(crate) fn resolve_policy(name: &str) -> anyhow::Result<ProfilePolicy> {
             "profile `net-allowlist` is reserved until egress allowlisting is enforceable"
         ),
         other => anyhow::bail!(
-            "unknown profile `{other}`; core profiles: agent, offline, untrusted, host"
+            "unknown profile `{other}`; core profiles: agent, agent-host, offline, untrusted, host"
         ),
     }
 }
@@ -145,7 +160,7 @@ pub(crate) fn profile_list_json() -> Value {
     }
     json!({
         "profiles": profiles,
-        "message": "Core: agent, offline, untrusted, host. net-allowlist is phase 2.",
+        "message": "Core: agent, agent-host, offline, untrusted, host. net-allowlist is phase 2.",
     })
 }
 
@@ -196,6 +211,13 @@ mod tests {
         assert!(!p.allow_package_caches);
         assert!(p.harden_container);
         assert_eq!(p.backend, BackendKind::Container);
+    }
+
+    #[test]
+    fn agent_host_is_host_backend() {
+        let p = resolve_policy("agent-host").expect("agent-host");
+        assert_eq!(p.backend, BackendKind::Host);
+        assert!(p.break_glass);
     }
 
     #[test]

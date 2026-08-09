@@ -15,6 +15,8 @@ pub(crate) struct Config {
     pub default_agent: String,
     /// When true, mount known host package caches read-only into the cage.
     pub share_package_caches: bool,
+    /// When true, `devcage agent` falls back to `agent-host` if no container runtime.
+    pub agent_host_fallback: bool,
 }
 
 impl Config {
@@ -28,6 +30,7 @@ impl Config {
             container_image: "docker.io/library/alpine:3.20".to_owned(),
             default_agent: "claude".to_owned(),
             share_package_caches: false,
+            agent_host_fallback: false,
         }
     }
 
@@ -44,12 +47,15 @@ impl Config {
         let default_agent =
             std::env::var("DEVCAGE_DEFAULT_AGENT").unwrap_or_else(|_| "claude".to_owned());
         let share_package_caches = env_truthy("DEVCAGE_SHARE_PACKAGE_CACHES");
+        // Default true: macOS users without Docker can still run host agents.
+        let agent_host_fallback = !env_falsy("DEVCAGE_AGENT_HOST_FALLBACK");
         Self {
             data_dir,
             container_runtime,
             container_image,
             default_agent,
             share_package_caches,
+            agent_host_fallback,
         }
     }
 }
@@ -65,6 +71,16 @@ fn env_truthy(key: &str) -> bool {
         matches!(
             v.trim().to_ascii_lowercase().as_str(),
             "1" | "true" | "yes" | "on"
+        )
+    })
+}
+
+/// True when env is explicitly falsey (`0`/`false`/`no`/`off`).
+fn env_falsy(key: &str) -> bool {
+    std::env::var(key).ok().is_some_and(|v| {
+        matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "0" | "false" | "no" | "off"
         )
     })
 }

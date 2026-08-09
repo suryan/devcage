@@ -73,9 +73,10 @@ fn dispatch(cfg: &Config, cli: Cli) -> anyhow::Result<ExitCode> {
         Commands::Agent {
             agent,
             offline,
+            host_restricted,
             workspace,
             args,
-        } => orchestrate::agent(cfg, agent, offline, workspace, args),
+        } => orchestrate::agent(cfg, agent, offline, host_restricted, workspace, args),
         Commands::Run {
             profile,
             workspace,
@@ -101,6 +102,14 @@ fn dispatch(cfg: &Config, cli: Cli) -> anyhow::Result<ExitCode> {
         } => orchestrate::shell(cfg, profile, workspace, wipe, keep),
         Commands::Stop { session, wipe } => {
             orchestrate::stop(cfg, session, wipe)?;
+            Ok(ExitCode::SUCCESS)
+        },
+        Commands::Export {
+            session,
+            source,
+            dest,
+        } => {
+            orchestrate::export(cfg, &session, &source, &dest)?;
             Ok(ExitCode::SUCCESS)
         },
         Commands::Verify => orchestrate::verify(cfg),

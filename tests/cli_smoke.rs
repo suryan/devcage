@@ -34,21 +34,31 @@ fn profile_list_succeeds() {
 }
 
 #[test]
-fn agent_without_runtime_fails_closed() {
-    let output = bin().arg("agent").output().expect("run agent");
-    assert!(!output.status.success());
-    let err = format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stderr),
-        String::from_utf8_lossy(&output.stdout)
-    );
+fn agent_falls_back_to_host_restricted_without_runtime() {
+    // Default DEVCAGE_AGENT_HOST_FALLBACK is on → should run host-restricted /usr/bin/true.
+    let output = bin()
+        .args(["agent", "--host-restricted", "/usr/bin/true"])
+        .output()
+        .expect("run agent");
     assert!(
-        err.contains("container")
-            || err.contains("docker")
-            || err.contains("podman")
-            || err.contains("runtime"),
-        "unexpected output: {err}"
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("host-restricted") || stderr.contains("agent-host"),
+        "banner missing: {stderr}"
+    );
+}
+
+#[test]
+fn agent_offline_without_runtime_fails_closed() {
+    let output = bin()
+        .args(["agent", "--offline", "/usr/bin/true"])
+        .output()
+        .expect("run agent offline");
+    assert!(!output.status.success());
 }
 
 #[test]

@@ -39,8 +39,13 @@ impl Backend for HostBackend {
         cmd.current_dir(&req.plan.workspace);
         // Ephemeral HOME so tools prefer session home when they honor $HOME.
         cmd.env("HOME", &req.plan.ephemeral_home);
-        cmd.env("DEVCAGE_PROFILE", "host");
-        cmd.env("DEVCAGE_BREAK_GLASS", "1");
+        cmd.env("DEVCAGE_PROFILE", &req.plan.profile);
+        if req.plan.profile == "agent-host" {
+            cmd.env("DEVCAGE_ISOLATION", "host-restricted");
+        } else {
+            cmd.env("DEVCAGE_BREAK_GLASS", "1");
+            cmd.env("DEVCAGE_ISOLATION", "host");
+        }
         // Best-effort: drop common secret env vars from the child (not a real sandbox).
         for key in SENSITIVE_ENV {
             cmd.env_remove(key);

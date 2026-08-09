@@ -89,6 +89,7 @@ Closed decisions: [docs/architecture.md](docs/architecture.md#design-decisions-c
 | [docs/architecture.md](docs/architecture.md) | Design + closed decisions |
 | [docs/usage.md](docs/usage.md) | CLI usage (scaffold + intended) |
 | [CHANGELOG.md](CHANGELOG.md) | Keep-a-Changelog history |
+| [docs/agent-images.md](docs/agent-images.md) | Container images + host-restricted agents |
 | [docs/workloads-gui-mobile.md](docs/workloads-gui-mobile.md) | Phase 3 appendix (not core) |
 
 ## Complements

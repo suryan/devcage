@@ -24,7 +24,9 @@ devcage run -p offline -- echo hi          # no network; wipe by default
 devcage run -p untrusted -- sh             # hardened + always wipe
 devcage run -p agent -- sh -c 'uname -a'   # full container net
 devcage shell -p offline
-devcage agent                              # runs agent inside container image
+devcage agent                              # container, or agent-host fallback
+devcage agent --host-restricted            # force host-restricted (Darwin agents)
+devcage export <session-id> out.txt ./out.txt
 devcage stop --wipe
 devcage clean                              # wipe exited sessions
 ```
@@ -53,7 +55,8 @@ devcage session
 
 | Profile | Backend | Network | Notes |
 |---------|---------|---------|--------|
-| **`agent`** | container | full (honest label) | Default; needs image with your tools/agent |
+| **`agent`** | container | full (honest label) | Default when Docker/Podman available |
+| **`agent-host`** | host | host | Host-restricted; ephemeral HOME + env scrub |
 | **`offline`** | container | **none** | Hardened; wipe by default |
 | **`untrusted`** | container | **none** | Hardened; always wipe; no host caches |
 | **`host`** | host process | unrestricted | Break-glass; ephemeral `$HOME` only |
@@ -84,11 +87,16 @@ devcage session
 | `DEVCAGE_CONTAINER_IMAGE` | Image (default Alpine 3.20) |
 | `DEVCAGE_DATA_DIR` | Sessions + ephemeral homes |
 | `DEVCAGE_SHARE_PACKAGE_CACHES` | `1` = RO host npm/uv/pip caches |
+| `DEVCAGE_AGENT_HOST_FALLBACK` | default on; `0` disables auto `agent-host` |
 | `RUST_LOG` | Tracing |
 
 ### Important: macOS agents
 
-Host-native agent binaries (Darwin) **do not** run inside a Linux container. Point `DEVCAGE_CONTAINER_IMAGE` at an image that **contains** the agent CLI (or use Linux tools only). Profile `host` runs the host binary with little isolation.
+Host-native agent binaries (Darwin) **do not** run inside a Linux container.
+
+1. Prefer a Linux image that ships the agent — see [agent-images.md](./agent-images.md).
+2. Or use **`devcage agent --host-restricted`** / auto-fallback (`agent-host`).
+3. Profile `host` is full break-glass.
 
 ## Composition with pkg-guard (optional)
 

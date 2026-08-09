@@ -31,9 +31,12 @@ pub(crate) enum Commands {
         /// Agent command name (default: `DEVCAGE_DEFAULT_AGENT` or `claude`).
         #[arg(env = "DEVCAGE_DEFAULT_AGENT")]
         agent: Option<String>,
-        /// Use offline profile (no network) instead of agent.
+        /// Use offline profile (no network) instead of agent (requires container).
         #[arg(long)]
         offline: bool,
+        /// Force host-restricted mode (ephemeral HOME; not a container).
+        #[arg(long)]
+        host_restricted: bool,
         /// Workspace directory to project into the cage (default: cwd).
         #[arg(long, short = 'w', env = "DEVCAGE_WORKSPACE")]
         workspace: Option<PathBuf>,
@@ -92,6 +95,15 @@ pub(crate) enum Commands {
         #[arg(long)]
         wipe: bool,
     },
+    /// Copy a path from a session home or workspace into a host destination.
+    Export {
+        /// Session id.
+        session: String,
+        /// Path relative to session home, or absolute under workspace/home.
+        source: PathBuf,
+        /// Destination path on the host.
+        dest: PathBuf,
+    },
     /// Isolation smoke checks (workspace safety, runtime, optional container probe).
     Verify,
     /// Pull the configured container image.
@@ -130,11 +142,34 @@ mod tests {
     #[test]
     fn parses_agent_offline() {
         let cli = Cli::try_parse_from(["devcage", "agent", "--offline", "claude"]).expect("parse");
-        let Commands::Agent { agent, offline, .. } = cli.command else {
+        let Commands::Agent {
+            agent,
+            offline,
+            host_restricted,
+            ..
+        } = cli.command
+        else {
             unreachable!("expected Agent");
         };
         assert!(offline);
+        assert!(!host_restricted);
         assert_eq!(agent.as_deref(), Some("claude"));
+    }
+
+    #[test]
+    fn parses_agent_host_restricted() {
+        let cli =
+            Cli::try_parse_from(["devcage", "agent", "--host-restricted", "grok"]).expect("parse");
+        let Commands::Agent {
+            agent,
+            host_restricted,
+            ..
+        } = cli.command
+        else {
+            unreachable!("expected Agent");
+        };
+        assert!(host_restricted);
+        assert_eq!(agent.as_deref(), Some("grok"));
     }
 
     #[test]
