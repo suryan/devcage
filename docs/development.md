@@ -11,6 +11,8 @@ DevCage is a **Rust** CLI. This document covers building, **strict quality gates
 | [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) | Coverage gate |
 | [ShellCheck](https://www.shellcheck.net) | Script lint |
 | [pre-commit](https://pre-commit.com) (recommended) | Git hooks |
+| Docker **or** Podman (for isolated profiles) | Container backend |
+| Colima (macOS helper) | `./scripts/setup-runtime.sh` |
 
 ```bash
 rustup component add rustfmt clippy llvm-tools-preview
@@ -18,6 +20,10 @@ cargo install cargo-llvm-cov --locked
 brew install shellcheck pre-commit   # or equivalent
 ./scripts/setup-hooks.sh
 cp local.env.example local.env       # optional
+
+# macOS container runtime (recommended for agent/offline/untrusted):
+./scripts/setup-runtime.sh           # Colima + Docker CLI
+# export DOCKER_HOST=unix://${HOME}/.colima/docker.sock
 ```
 
 ## Layout
