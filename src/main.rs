@@ -80,6 +80,7 @@ fn dispatch(cfg: &Config, cli: Cli) -> anyhow::Result<ExitCode> {
             profile,
             workspace,
             wipe,
+            keep,
             command,
         } => orchestrate::run(
             cfg,
@@ -89,13 +90,15 @@ fn dispatch(cfg: &Config, cli: Cli) -> anyhow::Result<ExitCode> {
                 command,
                 tty: false,
                 wipe_after: wipe,
+                keep,
             },
         ),
         Commands::Shell {
             profile,
             workspace,
             wipe,
-        } => orchestrate::shell(cfg, profile, workspace, wipe),
+            keep,
+        } => orchestrate::shell(cfg, profile, workspace, wipe, keep),
         Commands::Stop { session, wipe } => {
             orchestrate::stop(cfg, session, wipe)?;
             Ok(ExitCode::SUCCESS)

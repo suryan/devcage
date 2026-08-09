@@ -57,6 +57,9 @@ pub(crate) enum Commands {
         /// Discard ephemeral session home after the command exits.
         #[arg(long)]
         wipe: bool,
+        /// Keep session home even if the profile would wipe by default.
+        #[arg(long)]
+        keep: bool,
         /// Command and args after `--`.
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         command: Vec<String>,
@@ -77,6 +80,9 @@ pub(crate) enum Commands {
         /// Discard ephemeral session home after the shell exits.
         #[arg(long)]
         wipe: bool,
+        /// Keep session home even if the profile would wipe by default.
+        #[arg(long)]
+        keep: bool,
     },
     /// Stop a session and optionally wipe ephemeral data.
     Stop {
@@ -138,6 +144,7 @@ mod tests {
             profile,
             command,
             wipe,
+            keep,
             ..
         } = cli.command
         else {
@@ -145,6 +152,7 @@ mod tests {
         };
         assert_eq!(profile, "agent");
         assert!(!wipe);
+        assert!(!keep);
         assert_eq!(command, vec!["echo", "hi"]);
     }
 

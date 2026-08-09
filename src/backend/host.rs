@@ -9,6 +9,18 @@ use crate::session::SessionRecord;
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct HostBackend;
 
+/// Env keys cleared for host-profile children (defense in depth only).
+const SENSITIVE_ENV: &[&str] = &[
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SESSION_TOKEN",
+    "GITHUB_TOKEN",
+    "GH_TOKEN",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "SSH_AUTH_SOCK",
+];
+
 impl Backend for HostBackend {
     fn name(&self) -> &'static str {
         "host"
@@ -29,6 +41,10 @@ impl Backend for HostBackend {
         cmd.env("HOME", &req.plan.ephemeral_home);
         cmd.env("DEVCAGE_PROFILE", "host");
         cmd.env("DEVCAGE_BREAK_GLASS", "1");
+        // Best-effort: drop common secret env vars from the child (not a real sandbox).
+        for key in SENSITIVE_ENV {
+            cmd.env_remove(key);
+        }
         run_command(cmd)
     }
 

@@ -20,10 +20,19 @@ pub(crate) fn doctor(cfg: &Config) -> anyhow::Result<()> {
     let docker = which("docker");
     let podman = which("podman");
     let runtime = detect_container_runtime(cfg.container_runtime.as_deref()).ok();
+    let isolated_ready = runtime.is_some();
+    let readiness = if isolated_ready {
+        "ready"
+    } else if which("/usr/bin/true") || which("true") {
+        "degraded_host_only"
+    } else {
+        "not_ready"
+    };
     let report = json!({
         "product": "devcage",
         "version": env!("CARGO_PKG_VERSION"),
         "status": "mvp",
+        "readiness": readiness,
         "focus": "AI agent development isolation",
         "core_profiles": ["agent", "offline", "untrusted", "host"],
         "backends": {
@@ -249,6 +258,8 @@ pub(crate) struct RunParams {
     pub tty: bool,
     /// Wipe ephemeral home after exit (OR with profile `always_wipe`).
     pub wipe_after: bool,
+    /// Keep session home even when the profile would wipe.
+    pub keep: bool,
 }
 
 /// Execute a command in a profile; returns process exit code.
@@ -317,7 +328,11 @@ pub(crate) fn run(cfg: &Config, params: RunParams) -> anyhow::Result<ExitCode> {
     session.exit_code = Some(outcome.as_ref().map_or(1, |o| o.exit_code));
     store.save(&session)?;
 
-    let wipe = params.wipe_after || policy.always_wipe;
+    let wipe = if params.keep {
+        false
+    } else {
+        params.wipe_after || policy.always_wipe
+    };
     if wipe {
         let _ = backend.stop(&session);
         store.wipe(&id)?;
@@ -348,6 +363,7 @@ pub(crate) fn agent(
             command,
             tty: true,
             wipe_after: offline,
+            keep: false,
         },
     )
 }
@@ -358,6 +374,7 @@ pub(crate) fn shell(
     profile: String,
     workspace: Option<std::path::PathBuf>,
     wipe: bool,
+    keep: bool,
 ) -> anyhow::Result<ExitCode> {
     run(
         cfg,
@@ -367,6 +384,7 @@ pub(crate) fn shell(
             command: default_shell_command(),
             tty: true,
             wipe_after: wipe,
+            keep,
         },
     )
 }

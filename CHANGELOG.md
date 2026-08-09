@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `--keep` on `run`/`shell` to override profile default wipe.
+- Doctor `readiness` field (`ready` | `degraded_host_only` | `not_ready`).
+- Host profile strips common secret env vars from the child process.
+
 ## [0.3.0] - 2026-08-09
 
 ### Notes
