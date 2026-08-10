@@ -1,6 +1,7 @@
 //! Runtime configuration from environment (no hardcoded machine paths).
 
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 /// Resolved `DevCage` configuration.
 #[derive(Debug, Clone)]
@@ -19,6 +20,8 @@ pub struct Config {
     pub agent_host_fallback: bool,
     /// Optional path to net allowlist file for `net-allowlist` profile.
     pub net_allowlist_file: Option<PathBuf>,
+    /// Optional note when `data_dir` was auto-relocated (e.g. Grok sandbox).
+    pub data_dir_note: Option<String>,
 }
 
 impl Config {
@@ -34,13 +37,14 @@ impl Config {
             share_package_caches: false,
             agent_host_fallback: false,
             net_allowlist_file: None,
+            data_dir_note: None,
         }
     }
 
     /// Load from environment with portable defaults.
     #[must_use]
     pub fn from_env() -> Self {
-        let data_dir = env_path("DEVCAGE_DATA_DIR").unwrap_or_else(default_data_dir);
+        let (data_dir, data_dir_note) = resolve_data_dir();
         let container_runtime = std::env::var("DEVCAGE_CONTAINER_RUNTIME")
             .ok()
             .map(|s| s.trim().to_owned())
@@ -61,6 +65,7 @@ impl Config {
             share_package_caches,
             agent_host_fallback,
             net_allowlist_file,
+            data_dir_note,
         }
         // Seatbelt: DEVCAGE_SEATBELT=1 enables sandbox-exec for agent-host on macOS.
     }
@@ -104,6 +109,77 @@ fn default_data_dir() -> PathBuf {
     PathBuf::from(".devcage-data")
 }
 
+/// Resolve session data directory.
+///
+/// - `DEVCAGE_DATA_DIR` wins when set (even if not writable — fail later with a clear error).
+/// - Otherwise use the XDG/home default when a write probe succeeds.
+/// - If the default is not writable (common under Grok `--sandbox workspace` / `keys-first`,
+///   which blocks `~/.local/share`), fall back to `$TMPDIR/devcage-data`, `/tmp/devcage-data`,
+///   or `./.devcage-data`.
+fn resolve_data_dir() -> (PathBuf, Option<String>) {
+    if let Some(explicit) = env_path("DEVCAGE_DATA_DIR") {
+        return (explicit, None);
+    }
+
+    let preferred = default_data_dir();
+    if dir_is_usable(&preferred) {
+        return (preferred, None);
+    }
+
+    for candidate in sandbox_safe_data_dir_candidates() {
+        if dir_is_usable(&candidate) {
+            let note = format!(
+                "default data dir {} not writable (agent sandbox?); using {}",
+                preferred.display(),
+                candidate.display()
+            );
+            eprintln!("devcage: {note}");
+            eprintln!(
+                "devcage: tip: set DEVCAGE_DATA_DIR explicitly, or allow a write path in Grok sandbox"
+            );
+            return (candidate, Some(note));
+        }
+    }
+
+    // Last resort: keep preferred so ensure() surfaces a path-specific error.
+    (
+        preferred,
+        Some(
+            "data dir may not be writable; set DEVCAGE_DATA_DIR to $TMPDIR/devcage-data \
+             when running under Grok --sandbox"
+                .to_owned(),
+        ),
+    )
+}
+
+/// Candidates that are usually writable under Grok Seatbelt `workspace` / `keys-first`.
+fn sandbox_safe_data_dir_candidates() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if let Some(tmp) = std::env::var_os("TMPDIR").filter(|s| !s.is_empty()) {
+        out.push(PathBuf::from(tmp).join("devcage-data"));
+    }
+    out.push(PathBuf::from("/tmp/devcage-data"));
+    if let Ok(cwd) = std::env::current_dir() {
+        out.push(cwd.join(".devcage-data"));
+    }
+    out
+}
+
+/// True when the process can create the directory and write a probe file.
+fn dir_is_usable(path: &Path) -> bool {
+    if fs::create_dir_all(path).is_err() {
+        return false;
+    }
+    let probe = path.join(".devcage-write-probe");
+    match fs::write(&probe, b"ok") {
+        Ok(()) => {
+            let _ = fs::remove_file(&probe);
+            true
+        },
+        Err(_) => false,
+    }
+}
+
 /// Resolve workspace path: explicit override, env, git root, else cwd.
 pub fn resolve_workspace(explicit: Option<PathBuf>) -> anyhow::Result<PathBuf> {
     let path = explicit.unwrap_or_else(default_workspace_path);
@@ -143,7 +219,7 @@ fn find_git_root() -> anyhow::Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{env_truthy, resolve_workspace};
+    use super::{dir_is_usable, env_truthy, resolve_workspace, sandbox_safe_data_dir_candidates};
     use std::path::PathBuf;
 
     #[test]
@@ -183,5 +259,28 @@ mod tests {
     fn pathbuf_roundtrip_smoke() {
         let p = PathBuf::from(".");
         assert!(!p.as_os_str().is_empty());
+    }
+
+    #[test]
+    fn temp_dir_is_usable_for_data() {
+        let dir = std::env::temp_dir().join(format!(
+            "devcage-usable-{}-{}",
+            std::process::id(),
+            unique_nanos()
+        ));
+        assert!(dir_is_usable(&dir));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn nonexistent_under_root_is_not_usable() {
+        // Path that cannot be created without privileges on Unix.
+        let p = PathBuf::from("/devcage-definitely-not-writable-by-user/data");
+        assert!(!dir_is_usable(&p));
+    }
+
+    #[test]
+    fn sandbox_safe_candidates_nonempty() {
+        assert!(!sandbox_safe_data_dir_candidates().is_empty());
     }
 }

@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`auth_seed`**: copy `~/.grok/auth.json` (+ config) into ephemeral HOME for `agent-host` so Grok can authenticate without re-login.
 - **Recommended stack** doc: Grok built-ins + sandbox/permissions + mcp-guard / secret-launcher / pkg-guard; DevCage as optional deep cage ([docs/recommended-stack.md](docs/recommended-stack.md)).
 - Example Grok recipes: [examples/grok/](examples/grok/) (`sandbox.toml`, `config.toml`).
+- **Grok sandbox composition:** auto-fallback `data_dir` when the default (`~/.local/share/devcage`) is not writable (`$TMPDIR` → `/tmp` → `./.devcage-data`); clearer `ensure` errors; `doctor.data_dir_note`.
 
 ### Changed
 

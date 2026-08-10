@@ -88,7 +88,14 @@ impl SessionStore {
 
     /// Ensure the store directory exists.
     pub fn ensure(&self) -> anyhow::Result<()> {
-        fs::create_dir_all(&self.root)?;
+        fs::create_dir_all(&self.root).map_err(|e| {
+            anyhow::anyhow!(
+                "cannot create session store {}: {e}\n\
+                 hint: under Grok `--sandbox`, default `~/.local/share/devcage` is often blocked; \
+                 set `DEVCAGE_DATA_DIR=$TMPDIR/devcage-data` (or rely on auto-fallback)",
+                self.root.display()
+            )
+        })?;
         Ok(())
     }
 

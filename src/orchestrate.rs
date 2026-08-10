@@ -113,13 +113,15 @@ pub fn doctor(cfg: &Config) -> anyhow::Result<()> {
             "bwrap": { "mvp": false, "planned": true, "available": which("bwrap") },
         },
         "data_dir": cfg.data_dir,
+        "data_dir_note": cfg.data_dir_note,
         "notes": [
             "Profiles agent/offline/untrusted require Docker or Podman (unless agent host-fallback).",
             "devcage agent uses agent-host when no container runtime and DEVCAGE_AGENT_HOST_FALLBACK is not off.",
             "agent-host: ephemeral HOME + env scrub on the host OS — not a container.",
             "offline and untrusted use network=none + container hardening (cap-drop ALL).",
             "Network for profile `agent` is full container net (not an allowlist).",
-            "See docs/agent-images.md for container images.",
+            "Under Grok --sandbox, data dir auto-falls back to $TMPDIR when ~/.local/share is blocked.",
+            "See docs/agent-images.md and docs/recommended-stack.md.",
         ],
     });
     println!("{}", serde_json::to_string_pretty(&report)?);
