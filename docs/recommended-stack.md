@@ -117,12 +117,67 @@ Keep pkg-guard shims first on `PATH` for `uvx` / `npx` on the host (and inside i
 | Disposable shell you will wipe | Keys and MCP already isolated |
 
 ```bash
+# IMPORTANT when Grok --sandbox is on (see composition below):
+export DEVCAGE_DATA_DIR="${TMPDIR:-/tmp}/devcage-data"
+
 devcage run -p offline -- ./sketchy-setup.sh
 devcage run -p untrusted -- sh -c 'curl …'   # still think twice
 devcage run -p agent -- make test            # full container net, labeled
 ```
 
-Optional permission shape: allow `Bash(devcage run *)` for caged jobs; deny broad destructive host patterns.
+Optional permission shape: allow `Bash(devcage *)` for caged jobs; deny broad destructive host patterns.
+
+## Do they work together? (tested)
+
+**Yes, with one required config.** They are independent processes that compose; they are **not** dual-installed the same way as mcp-guard + secret-launcher.
+
+| Component | Tested how | Status |
+|-----------|------------|--------|
+| DevCage unit/CLI/container e2e | `cargo test`, Colima offline net | **Yes** (in-repo) |
+| Grok host-restricted via DevCage `agent-host` | Real headless Grok create file + auth seed | **Yes** (manual) |
+| Grok `--sandbox keys-first` **alone** | Grok product feature | Upstream Grok; not DevCage CI |
+| **Grok sandbox + `devcage run` together** | Manual smoke on macOS + Colima (2026-08) | **Works after fix below** |
+| Full stack mcp-guard + secret-launcher + pkg-guard + sandbox + DevCage in one session | End-to-end automation | **Not in DevCage CI** (compose yourself) |
+
+### Composition failure we hit (and fixed)
+
+Grok `workspace` / `keys-first` allows writes mainly to:
+
+- project CWD
+- `~/.grok/`
+- `/tmp` (and similar temp dirs)
+
+Default DevCage session dir is **`~/.local/share/devcage`**, which is **outside** that write set → under sandbox you get:
+
+```text
+devcage error: Operation not permitted (os error 1)
+```
+
+**Fix (required for nested use):** put DevCage data under a sandbox-writable path:
+
+```bash
+export DEVCAGE_DATA_DIR="${TMPDIR:-/tmp}/devcage-data"
+# or: project-local, e.g. ./.devcage-data (gitignored)
+```
+
+With that set, the same Grok sandbox session successfully ran:
+
+- `devcage run -p offline -- echo …` → `OFFLINE_OK` (Docker/Colima)
+- `devcage run -p host -- echo …` → `HOST_OK`
+
+Also under sandbox on that machine: Docker socket under `~/.colima/...` remained **usable**; default data dir was the blocker, not Docker itself.
+
+### Practical recipe (Grok session that may call DevCage)
+
+```bash
+cd /path/to/project
+export PATH="/path/to/devcage-install:$PATH"
+export DEVCAGE_DATA_DIR="${TMPDIR:-/tmp}/devcage-data"
+grok --sandbox keys-first
+# inside agent work: devcage run -p offline -- …
+```
+
+Or bake `DEVCAGE_DATA_DIR` into project `local.env` / shell profile for sandboxed agent work.
 
 ## What DevCage is *not* in this model
 

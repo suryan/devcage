@@ -26,3 +26,9 @@ deny = [
   "**/credentials.json",
   "**/service-account*.json",
 ]
+
+# Nested DevCage: default data dir ~/.local/share/devcage is NOT writable under
+# workspace/keys-first. Either:
+#   export DEVCAGE_DATA_DIR="${TMPDIR:-/tmp}/devcage-data"
+# or add a project-local path and allow it:
+# read_write = ["./.devcage-data"]
