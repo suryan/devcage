@@ -226,7 +226,7 @@ Default agent name is **`grok`** (`DEVCAGE_DEFAULT_AGENT`).
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| `devcage error: Operation not permitted` under sandbox | Data dir under `~/.local/share` blocked | Upgrade DevCage (auto-fallback) or `export DEVCAGE_DATA_DIR=$TMPDIR/devcage-data` |
+| `devcage error: Operation not permitted` under sandbox | Data dir under `~/.local/share` blocked, or stale `DEVCAGE_DATA_DIR` from an old `devcage grok` | Rebuild/install latest DevCage; **restart** with `devcage grok` (exports sandbox-safe `$TMPDIR/devcage-data`). This session: `export DEVCAGE_DATA_DIR=$TMPDIR/devcage-data` |
 | `grok not found on PATH` | Grok not installed | Install Grok Build; check `PATH` |
 | Sandbox profile `keys-first` unknown | Missing `.grok/sandbox.toml` | `devcage init-grok` or `devcage grok` (seeds by default) |
 | Nested `devcage` not found | Old session without mode | Use `devcage grok` so PATH is fixed; or install `devcage` globally |

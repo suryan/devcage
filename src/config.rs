@@ -111,14 +111,30 @@ fn default_data_dir() -> PathBuf {
 
 /// Resolve session data directory.
 ///
-/// - `DEVCAGE_DATA_DIR` wins when set (even if not writable — fail later with a clear error).
+/// - Usable `DEVCAGE_DATA_DIR` wins when set.
+/// - Unusable explicit path (common: parent exported host default into a Seatbelt
+///   child) falls back to sandbox-safe candidates with a note.
 /// - Otherwise use the XDG/home default when a write probe succeeds.
-/// - If the default is not writable (common under Grok `--sandbox workspace` / `keys-first`,
-///   which blocks `~/.local/share`), fall back to `$TMPDIR/devcage-data`, `/tmp/devcage-data`,
-///   or `./.devcage-data`.
+/// - If the default is not writable, fall back to `$TMPDIR/devcage-data`,
+///   `/tmp/devcage-data`, or `./.devcage-data`.
 fn resolve_data_dir() -> (PathBuf, Option<String>) {
     if let Some(explicit) = env_path("DEVCAGE_DATA_DIR") {
-        return (explicit, None);
+        if dir_is_usable(&explicit) {
+            return (explicit, None);
+        }
+        if let Some((path, note)) = first_usable_sandbox_safe_dir(Some(&explicit)) {
+            if let Some(ref n) = note {
+                eprintln!("devcage: {n}");
+            }
+            return (path, note);
+        }
+        return (
+            explicit,
+            Some(
+                "DEVCAGE_DATA_DIR is not writable; set it to $TMPDIR/devcage-data under Grok sandbox"
+                    .to_owned(),
+            ),
+        );
     }
 
     let preferred = default_data_dir();
@@ -126,22 +142,16 @@ fn resolve_data_dir() -> (PathBuf, Option<String>) {
         return (preferred, None);
     }
 
-    for candidate in sandbox_safe_data_dir_candidates() {
-        if dir_is_usable(&candidate) {
-            let note = format!(
-                "default data dir {} not writable (agent sandbox?); using {}",
-                preferred.display(),
-                candidate.display()
-            );
-            eprintln!("devcage: {note}");
-            eprintln!(
-                "devcage: tip: set DEVCAGE_DATA_DIR explicitly, or allow a write path in Grok sandbox"
-            );
-            return (candidate, Some(note));
+    if let Some((path, note)) = first_usable_sandbox_safe_dir(Some(&preferred)) {
+        if let Some(ref n) = note {
+            eprintln!("devcage: {n}");
         }
+        eprintln!(
+            "devcage: tip: set DEVCAGE_DATA_DIR explicitly, or allow a write path in Grok sandbox"
+        );
+        return (path, note);
     }
 
-    // Last resort: keep preferred so ensure() surfaces a path-specific error.
     (
         preferred,
         Some(
@@ -150,6 +160,26 @@ fn resolve_data_dir() -> (PathBuf, Option<String>) {
                 .to_owned(),
         ),
     )
+}
+
+/// Data dir to export into a Grok `--sandbox` child (`devcage grok`).
+///
+/// Always prefers paths typically writable under Seatbelt (`TMPDIR`, `/tmp`,
+/// project `.devcage-data`), even when the *parent* can write `~/.local/share`.
+/// Otherwise the child inherits a non-writable `DEVCAGE_DATA_DIR` and nested
+/// `devcage run` fails with `Operation not permitted`.
+#[must_use]
+pub fn data_dir_for_grok_sandbox_child() -> (PathBuf, Option<String>) {
+    if let Some((path, note)) = first_usable_sandbox_safe_dir(None) {
+        let note = note.or_else(|| {
+            Some(format!(
+                "sandbox-safe data dir for nested devcage: {}",
+                path.display()
+            ))
+        });
+        return (path, note);
+    }
+    resolve_data_dir()
 }
 
 /// Candidates that are usually writable under Grok Seatbelt `workspace` / `keys-first`.
@@ -163,6 +193,22 @@ fn sandbox_safe_data_dir_candidates() -> Vec<PathBuf> {
         out.push(cwd.join(".devcage-data"));
     }
     out
+}
+
+fn first_usable_sandbox_safe_dir(blocked: Option<&Path>) -> Option<(PathBuf, Option<String>)> {
+    for candidate in sandbox_safe_data_dir_candidates() {
+        if dir_is_usable(&candidate) {
+            let note = blocked.map(|b| {
+                format!(
+                    "data dir {} not writable (agent sandbox?); using {}",
+                    b.display(),
+                    candidate.display()
+                )
+            });
+            return Some((candidate, note));
+        }
+    }
+    None
 }
 
 /// True when the process can create the directory and write a probe file.
@@ -282,5 +328,11 @@ mod tests {
     #[test]
     fn sandbox_safe_candidates_nonempty() {
         assert!(!sandbox_safe_data_dir_candidates().is_empty());
+    }
+
+    #[test]
+    fn data_dir_for_grok_child_is_usable() {
+        let (path, _note) = super::data_dir_for_grok_sandbox_child();
+        assert!(dir_is_usable(&path), "path={}", path.display());
     }
 }

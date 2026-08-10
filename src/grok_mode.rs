@@ -7,7 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-use crate::config::{resolve_workspace, Config};
+use crate::config::{data_dir_for_grok_sandbox_child, resolve_workspace, Config};
 use crate::util::which;
 
 /// Embedded recipes (same as `examples/grok/`).
@@ -70,8 +70,9 @@ pub fn run_grok_mode(cfg: &Config, params: GrokModeParams) -> anyhow::Result<Exi
     }
 
     let grok_bin = resolve_grok_bin(cfg);
-    let data_dir = cfg.data_dir.clone();
-    // Prefer an already-resolved (possibly relocated) data dir for nested devcage.
+    // Always pick a path writable *inside* Grok Seatbelt (not the host default
+    // ~/.local/share, which the parent can write but the child often cannot).
+    let (data_dir, data_note) = data_dir_for_grok_sandbox_child();
     let data_dir_str = data_dir.display().to_string();
 
     let mut argv = vec![
@@ -86,7 +87,7 @@ pub fn run_grok_mode(cfg: &Config, params: GrokModeParams) -> anyhow::Result<Exi
             &workspace,
             &data_dir_str,
             &argv,
-            cfg.data_dir_note.as_deref(),
+            data_note.as_deref().or(cfg.data_dir_note.as_deref()),
         );
         return Ok(ExitCode::SUCCESS);
     }
@@ -99,7 +100,7 @@ pub fn run_grok_mode(cfg: &Config, params: GrokModeParams) -> anyhow::Result<Exi
     eprintln!("  sandbox:   {}", params.sandbox);
     eprintln!("  workspace: {}", workspace.display());
     eprintln!("  data_dir:  {data_dir_str}");
-    if let Some(note) = &cfg.data_dir_note {
+    if let Some(note) = data_note.as_ref().or(cfg.data_dir_note.as_ref()) {
         eprintln!("  note:      {note}");
     }
     eprintln!("  deep cage: devcage run -p offline|untrusted|agent -- <cmd>");
