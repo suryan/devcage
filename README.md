@@ -100,7 +100,7 @@ Closed decisions: [docs/architecture.md](docs/architecture.md#design-decisions-c
 | [docs/development.md](docs/development.md) | Build, lint, coverage, pre-commit, releases |
 | [docs/product_requirements.md](docs/product_requirements.md) | Goals, FR/NFR, agent wedge, MVP |
 | [docs/architecture.md](docs/architecture.md) | Design + closed decisions |
-| [docs/usage.md](docs/usage.md) | CLI usage |
+| [docs/usage.md](docs/usage.md) | **CLI + full Grok workflow** (`devcage grok`, deep cage, troubleshooting) |
 | [CHANGELOG.md](CHANGELOG.md) | Keep-a-Changelog history |
 | [docs/agent-images.md](docs/agent-images.md) | Container images + host-restricted agents |
 | [examples/grok/](examples/grok/) | Copy-paste Grok sandbox + permission recipes |

@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Grok sandbox composition:** auto-fallback `data_dir` when the default (`~/.local/share/devcage`) is not writable (`$TMPDIR` → `/tmp` → `./.devcage-data`); clearer `ensure` errors; `doctor.data_dir_note`.
 - **`devcage grok`** combined mode: seed `.grok` recipes, set `DEVCAGE_DATA_DIR` + `PATH`, launch `grok --sandbox keys-first` (override with `--sandbox` / `DEVCAGE_GROK_SANDBOX`).
 - **`devcage init-grok`**: write embedded sandbox/permission recipes into the project.
+- **`docs/usage.md`**: full Grok operator guide (`devcage grok`, nested deep cage, data-dir fallback, agent vs grok, troubleshooting).
 
 ### Changed
 
