@@ -20,3 +20,6 @@ lcov.info
 
 # Local real-world agent proofs (not product artifacts)
 /real_world_*.txt
+
+# Local Grok project config (use examples/grok/ as templates)
+/.grok/
