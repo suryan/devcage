@@ -21,6 +21,7 @@ mod banner;
 mod cli;
 mod config;
 mod events;
+mod grok_mode;
 mod net_policy;
 mod orchestrate;
 mod plan;
@@ -142,5 +143,53 @@ fn dispatch(cfg: &Config, cli: Cli) -> anyhow::Result<ExitCode> {
             orchestrate::clean(cfg, all)?;
             Ok(ExitCode::SUCCESS)
         },
+        Commands::Grok {
+            sandbox,
+            no_init,
+            force_init,
+            print,
+            workspace,
+            args,
+        } => dispatch_grok(cfg, sandbox, no_init, force_init, print, workspace, args),
+        Commands::InitGrok { force, workspace } => dispatch_init_grok(force, workspace),
     }
+}
+
+fn dispatch_grok(
+    cfg: &Config,
+    sandbox: String,
+    no_init: bool,
+    force_init: bool,
+    print: bool,
+    workspace: Option<std::path::PathBuf>,
+    args: Vec<String>,
+) -> anyhow::Result<ExitCode> {
+    grok_mode::run_grok_mode(
+        cfg,
+        grok_mode::GrokModeParams {
+            sandbox,
+            no_init,
+            force_init,
+            print_only: print,
+            workspace,
+            args,
+        },
+    )
+}
+
+fn dispatch_init_grok(
+    force: bool,
+    workspace: Option<std::path::PathBuf>,
+) -> anyhow::Result<ExitCode> {
+    let ws = config::resolve_workspace(workspace)?;
+    let written = grok_mode::init_grok_recipes(&ws, force)?;
+    if written.is_empty() {
+        println!(
+            "devcage: .grok recipes already present under {} (use --force to overwrite)",
+            ws.display()
+        );
+    } else {
+        println!("devcage: wrote {}", written.join(", "));
+    }
+    Ok(ExitCode::SUCCESS)
 }

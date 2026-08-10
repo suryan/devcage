@@ -139,6 +139,39 @@ pub enum Commands {
         #[arg(long)]
         all: bool,
     },
+    /// Combined mode: Grok OS sandbox + DevCage-ready env (recommended daily).
+    ///
+    /// Seeds `.grok/` recipes if missing, sets `DEVCAGE_DATA_DIR` for nested
+    /// `devcage run`, then execs `grok --sandbox <profile> …`.
+    Grok {
+        /// Grok sandbox profile (`keys-first`, `workspace`, `strict`, …).
+        #[arg(long, default_value = "keys-first", env = "DEVCAGE_GROK_SANDBOX")]
+        sandbox: String,
+        /// Do not seed `.grok/sandbox.toml` / `.grok/config.toml`.
+        #[arg(long)]
+        no_init: bool,
+        /// Overwrite existing `.grok` recipes when seeding.
+        #[arg(long)]
+        force_init: bool,
+        /// Print the planned command and env; do not start Grok.
+        #[arg(long)]
+        print: bool,
+        /// Project workspace (default: cwd or git root).
+        #[arg(long, short = 'w', env = "DEVCAGE_WORKSPACE")]
+        workspace: Option<PathBuf>,
+        /// Extra args forwarded to `grok` (e.g. `-p "…"`, `--always-approve`).
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Write example Grok sandbox + permission recipes into `.grok/`.
+    InitGrok {
+        /// Overwrite existing files.
+        #[arg(long)]
+        force: bool,
+        /// Project workspace (default: cwd or git root).
+        #[arg(long, short = 'w', env = "DEVCAGE_WORKSPACE")]
+        workspace: Option<PathBuf>,
+    },
 }
 
 /// Profile subcommands.
@@ -225,5 +258,42 @@ mod tests {
         };
         assert!(wipe);
         assert_eq!(profile, "offline");
+    }
+
+    #[test]
+    fn parses_grok_mode() {
+        let cli = Cli::try_parse_from([
+            "devcage",
+            "grok",
+            "--sandbox",
+            "workspace",
+            "--print",
+            "-p",
+            "hi",
+        ])
+        .expect("parse");
+        let Commands::Grok {
+            sandbox,
+            print,
+            args,
+            no_init,
+            ..
+        } = cli.command
+        else {
+            unreachable!("expected Grok");
+        };
+        assert_eq!(sandbox, "workspace");
+        assert!(print);
+        assert!(!no_init);
+        assert_eq!(args, vec!["-p", "hi"]);
+    }
+
+    #[test]
+    fn parses_init_grok() {
+        let cli = Cli::try_parse_from(["devcage", "init-grok", "--force"]).expect("parse");
+        assert!(matches!(
+            cli.command,
+            Commands::InitGrok { force: true, .. }
+        ));
     }
 }

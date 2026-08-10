@@ -60,11 +60,26 @@ Grok (host) + global skills + built-in tools
 
 ## Daily workflow (Grok)
 
+**Preferred entrypoint** — one mode that wires both layers:
+
 ```bash
 # From the project root
-grok --sandbox workspace
-# or stricter exploration of untrusted trees:
-# grok --sandbox strict
+devcage grok
+# → seeds .grok recipes if missing
+# → sets DEVCAGE_DATA_DIR (sandbox-safe / auto-relocated)
+# → prepends this devcage binary on PATH
+# → runs: grok --sandbox keys-first …
+```
+
+Equivalents / options:
+
+```bash
+devcage grok --sandbox workspace
+devcage grok --sandbox strict
+devcage grok --print              # dry-run: show env + command
+devcage init-grok                 # only write .grok/ recipes
+# manual (without the wrapper):
+grok --sandbox keys-first
 ```
 
 Optional project defaults (committed recipes under [examples/grok/](../examples/grok/)):

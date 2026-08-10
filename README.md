@@ -17,10 +17,10 @@
 ## Pitch
 
 ```text
-# Daily (keys-first): Grok on host with OS sandbox — see docs/recommended-stack.md
-grok --sandbox workspace
+# Daily combined mode (Grok OS sandbox + DevCage-ready):
+devcage grok
 
-# Deep cage when needed:
+# Deep cage when needed (from shell or inside that Grok session):
 devcage run -p offline -- ./sketchy.sh
 devcage run -p untrusted -- sh
 devcage stop --wipe

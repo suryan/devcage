@@ -149,3 +149,23 @@ fn profile_list_includes_untrusted() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("untrusted"));
 }
+
+#[test]
+fn grok_mode_print_plan() {
+    let output = bin()
+        .args(["grok", "--print", "--no-init", "--sandbox", "workspace"])
+        .output()
+        .expect("grok --print");
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("mode: grok-sandbox"), "stdout={stdout}");
+    assert!(stdout.contains("DEVCAGE_DATA_DIR="), "stdout={stdout}");
+    assert!(
+        stdout.contains("command: grok --sandbox workspace"),
+        "stdout={stdout}"
+    );
+}

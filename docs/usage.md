@@ -20,8 +20,15 @@ Needs **Docker or Podman** for isolated profiles. `devcage doctor` reports avail
 ```bash
 devcage doctor
 devcage verify                             # isolation smoke checks
+
+# Recommended daily mode (Grok OS sandbox + DevCage-ready):
+devcage grok                               # seeds .grok/ if needed; grok --sandbox keys-first
+devcage grok --print                       # show plan only
+devcage grok --sandbox workspace -- -p "fix the bug"
+devcage init-grok                          # only seed .grok recipes
+
+# Deep cage when needed (from a shell or from inside Grok):
 devcage pull                               # pull DEVCAGE_CONTAINER_IMAGE
-# with Docker/Podman:
 devcage run -p offline -- echo hi          # no network; wipe by default
 devcage run -p untrusted -- sh             # hardened + always wipe
 devcage run -p agent -- sh -c 'uname -a'   # full container net
@@ -73,7 +80,9 @@ devcage session
 | `devcage profile list\|show` | Built-in profiles |
 | `devcage run -p <profile> -- <cmd…>` | Run command in cage |
 | `devcage shell -p <profile>` | `/bin/sh -l` in cage |
-| `devcage agent [name] [--offline] [--host-restricted]` | Happy path agent launch |
+| `devcage grok […]` | **Combined mode:** Grok `--sandbox` + DevCage data dir / PATH |
+| `devcage init-grok` | Seed `.grok/sandbox.toml` + `config.toml` recipes |
+| `devcage agent [name] [--offline] [--host-restricted]` | Agent inside cage / agent-host |
 | `devcage export <id> <src> <dest>` | Promote artifact from session |
 | `devcage logs <id>` | Session event log (JSON lines) |
 | `devcage init-allowlist [path]` | Write starter allowlist file |
@@ -89,6 +98,7 @@ devcage session
 | `DEVCAGE_WORKSPACE` | Project path (default: cwd) |
 | `DEVCAGE_DEFAULT_PROFILE` | Default for run/shell (`agent`) |
 | `DEVCAGE_DEFAULT_AGENT` | Agent binary name (`grok` by default) |
+| `DEVCAGE_GROK_SANDBOX` | Sandbox profile for `devcage grok` (`keys-first`) |
 | `DEVCAGE_CONTAINER_RUNTIME` | `docker` or `podman` |
 | `DEVCAGE_CONTAINER_IMAGE` | Image (default Alpine 3.20) |
 | `DEVCAGE_DATA_DIR` | Sessions + ephemeral homes |
