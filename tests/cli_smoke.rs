@@ -103,6 +103,7 @@ fn agent_offline_requires_container() {
 #[test]
 fn host_profile_runs_true() {
     let output = bin()
+        .env_remove("DEVCAGE_DENY_HOST") // parent shell may be under wrap/grok
         .args(["run", "-p", "host", "--", "/usr/bin/true"])
         .output()
         .expect("run host");
@@ -223,4 +224,30 @@ fn limits_command_runs() {
         "stdout={stdout}"
     );
     assert!(stdout.contains("checks"), "stdout={stdout}");
+}
+
+#[test]
+fn wrap_print_and_true() {
+    let print = bin()
+        .args(["wrap", "--print", "--", "/usr/bin/true"])
+        .output()
+        .expect("wrap print");
+    assert!(
+        print.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&print.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&print.stdout);
+    assert!(stdout.contains("mode: wrap"), "stdout={stdout}");
+    assert!(stdout.contains("DEVCAGE_MODE=wrap"), "stdout={stdout}");
+
+    let run = bin()
+        .args(["wrap", "--", "/usr/bin/true"])
+        .output()
+        .expect("wrap true");
+    assert!(
+        run.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&run.stderr)
+    );
 }

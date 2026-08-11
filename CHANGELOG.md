@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`docs/usage.md`**: full Grok operator guide with step-by-step meaning (setup, daily, deep cage, recipes, limits, troubleshooting).
 - **`devcage limits`**: JSON probes for sandbox + nested cage composition.
 - **Hardening:** `keys-first` extends Grok **`strict`** + expanded deny; `devcage grok` scrubs `SSH_AUTH_SOCK`/cloud tokens; stable PATH; `DEVCAGE_DENY_HOST=1` blocks profile `host` (override `--allow-host-profile`).
+- **`devcage wrap`**: run **any** agent/command under DevCage process isolation (macOS Seatbelt + env scrub + nested deep-cage wiring); no agent-native sandbox required.
 
 ### Changed
 

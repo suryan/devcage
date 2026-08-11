@@ -5,7 +5,8 @@
 
 | You want | Use |
 |----------|-----|
-| Daily coding with Grok (recommended) | **`devcage grok`** |
+| Daily coding with **Grok** (recommended) | **`devcage grok`** |
+| **Any other agent** (Claude, Cursor, Codex, …) without its own sandbox | **`devcage wrap -- <agent…>`** |
 | Deep cage for one command | **`devcage run -p offline\|untrusted\|agent -- …`** |
 | Architecture / threat model detail | [recommended-stack.md](./recommended-stack.md) |
 | Container images | [agent-images.md](./agent-images.md) |
@@ -315,14 +316,54 @@ devcage limits
 
 ---
 
+### Generic wrap: any agent without its own sandbox
+
+Agents that **do not** implement `--sandbox` (Claude Code, Cursor CLI, Codex, custom CLIs) can still be process-isolated by DevCage:
+
+```bash
+devcage wrap -- claude
+devcage wrap -- cursor-agent
+devcage wrap -- codex
+devcage wrap --print -- /usr/bin/true    # dry-run
+devcage wrap --no-seatbelt -- my-agent   # env wiring only
+devcage wrap --ephemeral-home -- claude  # remap HOME (may break login)
+```
+
+**What `devcage wrap` means:**
+
+| Piece | Meaning |
+|-------|---------|
+| **macOS Seatbelt** | Runs the command under `sandbox-exec` with a DevCage-generated profile (project + tmp + data_dir + common agent dirs writable; system/tools readable). **No agent cooperation required.** |
+| **Env scrub** | Same ambient scrub as `devcage grok` (`SSH_AUTH_SOCK`, AWS secrets, GH/OpenAI/Anthropic tokens) |
+| **`DEVCAGE_DATA_DIR`** | Sandbox-safe path for nested `devcage run` |
+| **`DEVCAGE_DENY_HOST=1`** | Nested break-glass `host` profile blocked by default |
+| **Real `HOME` (default)** | Agent auth/skills keep working; optional `--ephemeral-home` for stricter (often breaks OAuth) |
+| **Linux** | Seatbelt N/A yet → env-only wrap + warning (bwrap planned) |
+
+**`devcage grok` vs `devcage wrap`:**
+
+| | `devcage grok` | `devcage wrap` |
+|--|----------------|----------------|
+| Agent | Grok only | **Any** command |
+| Sandbox source | Grok’s own `--sandbox` + `.grok` recipes | **DevCage Seatbelt** (or env-only) |
+| Best when | You use Grok daily | Agent has no sandbox mode |
+
+Nested deep cage is the same for both:
+
+```bash
+# inside wrapped agent shell tools, or any shell:
+devcage run -p offline -- ./sketchy.sh
+```
+
 ### What is *not* supported as a first-class mode
 
 | Not supported | Meaning |
 |---------------|---------|
-| **`devcage cursor`** | No Cursor combined mode; you can still call `devcage run` from Cursor’s shell |
+| **Named `devcage cursor` / `devcage claude` aliases** | Use `devcage wrap -- …` (same isolation) |
 | **Grok inside Alpine daily** | Skills/auth break; use host Grok + sandbox instead |
-| **MCP as replacement for all built-ins** | Model ignores dual APIs; use Seatbelt on built-ins |
+| **MCP as replacement for all built-ins** | Model ignores dual APIs; contain the process instead |
 | **Full Keychain lockout via sandbox alone** | Keep mcp-secret-launcher + mcp-guard |
+| **Linux process Seatbelt** | Wrap is env-only on non-macOS until bwrap lands |
 
 ---
 
@@ -414,6 +455,7 @@ devcage session
 | **`devcage grok […]`** | **Combined mode:** Grok `--sandbox` + DevCage-ready env (see above) |
 | **`devcage init-grok`** | Seed `.grok/sandbox.toml` + `config.toml` |
 | **`devcage limits`** | JSON isolation probes (sandbox + nested cage) |
+| **`devcage wrap -- <cmd…>`** | Any agent/command under process wrap (Seatbelt on macOS) |
 | `devcage agent [name] [--offline] [--host-restricted]` | Agent in cage / agent-host |
 | `devcage export <id> <src> <dest>` | Promote artifact from session |
 | `devcage logs <id>` | Session event log (JSON lines) |

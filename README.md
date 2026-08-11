@@ -17,10 +17,14 @@
 ## Pitch
 
 ```text
-# Daily combined mode (Grok OS sandbox + DevCage-ready):
+# Daily Grok (uses Grok's own --sandbox + DevCage wiring):
 devcage grok
 
-# Deep cage when needed (from shell or inside that Grok session):
+# Any other agent (DevCage applies Seatbelt — agent needs no sandbox mode):
+devcage wrap -- claude
+devcage wrap -- cursor-agent
+
+# Deep cage when needed:
 devcage run -p offline -- ./sketchy.sh
 devcage run -p untrusted -- sh
 devcage stop --wipe

@@ -23,3 +23,7 @@ lcov.info
 
 # Local Grok project config (use examples/grok/ as templates)
 /.grok/
+
+# Local cargo home for sandboxed builds
+.cargo-local/
+devcage-bin

@@ -187,6 +187,36 @@ pub enum Commands {
         #[arg(long, short = 'w', env = "DEVCAGE_WORKSPACE")]
         workspace: Option<PathBuf>,
     },
+    /// Run **any** agent/command under `DevCage` process wrap (no agent sandbox required).
+    ///
+    /// On macOS: `sandbox-exec` Seatbelt around the process. Always: scrub env,
+    /// sandbox-safe `DEVCAGE_DATA_DIR`, deny nested `host` profile by default.
+    ///
+    /// Examples:
+    ///   devcage wrap -- claude
+    ///   devcage wrap -- cursor-agent
+    ///   devcage wrap -- codex
+    ///   devcage wrap --print -- true
+    Wrap {
+        /// Print plan only; do not run the command.
+        #[arg(long)]
+        print: bool,
+        /// Allow nested `devcage run -p host`.
+        #[arg(long)]
+        allow_host_profile: bool,
+        /// Do not apply Seatbelt (env wiring only).
+        #[arg(long)]
+        no_seatbelt: bool,
+        /// Remap HOME to ephemeral session home (may break agent login/skills).
+        #[arg(long)]
+        ephemeral_home: bool,
+        /// Project workspace (default: cwd or git root).
+        #[arg(long, short = 'w', env = "DEVCAGE_WORKSPACE")]
+        workspace: Option<PathBuf>,
+        /// Command and args (use `--` before the command).
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
+        command: Vec<String>,
+    },
 }
 
 /// Profile subcommands.
@@ -311,6 +341,26 @@ mod tests {
     fn parses_limits() {
         let cli = Cli::try_parse_from(["devcage", "limits"]).expect("parse");
         assert!(matches!(cli.command, Commands::Limits));
+    }
+
+    #[test]
+    fn parses_wrap() {
+        let cli = Cli::try_parse_from(["devcage", "wrap", "--print", "--", "claude", "-p", "hi"])
+            .expect("parse");
+        let Commands::Wrap {
+            print,
+            command,
+            no_seatbelt,
+            ephemeral_home,
+            ..
+        } = cli.command
+        else {
+            unreachable!("expected Wrap");
+        };
+        assert!(print);
+        assert!(!no_seatbelt);
+        assert!(!ephemeral_home);
+        assert_eq!(command, vec!["claude", "-p", "hi"]);
     }
 
     #[test]

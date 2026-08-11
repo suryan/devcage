@@ -29,6 +29,7 @@ mod plan;
 mod profiles;
 mod session;
 mod util;
+mod wrap_mode;
 
 use std::process::ExitCode;
 
@@ -183,5 +184,23 @@ fn dispatch(cfg: &Config, cli: Cli) -> anyhow::Result<ExitCode> {
             }
             Ok(ExitCode::SUCCESS)
         },
+        Commands::Wrap {
+            print,
+            allow_host_profile,
+            no_seatbelt,
+            ephemeral_home,
+            workspace,
+            command,
+        } => wrap_mode::run_wrap(
+            cfg,
+            wrap_mode::WrapParams {
+                workspace,
+                print_only: print,
+                allow_host_profile,
+                no_seatbelt,
+                ephemeral_home,
+                command,
+            },
+        ),
     }
 }
