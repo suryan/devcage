@@ -27,273 +27,354 @@ Ensure `devcage` and `grok` are on your `PATH`. Needs **Docker or Podman** (e.g.
 
 ## Working with Grok (full guide)
 
-### Model in one sentence
+This section is the operator guide for **daily Grok + optional DevCage deep cage**.
+Read it as: *what to type*, then *what that step actually means*.
 
-**Keep Grok’s built-in tools; contain the process with Grok’s OS sandbox; use DevCage only for untrusted / offline / Linux commands.**
-Do not put every edit behind MCP or inside a Linux agent image for day-to-day work.
+### Big picture (two layers)
+
+| Layer | What it is | What it is **for** |
+|-------|------------|---------------------|
+| **Grok OS sandbox** (`devcage grok` → `grok --sandbox keys-first`) | Kernel Seatbelt on the **whole Grok process** (edits, bash, tools) | Stop the agent from trashing the disk / reading other projects / touching secret *paths* while you still use normal Grok skills |
+| **DevCage deep cage** (`devcage run -p offline\|untrusted\|agent`) | Separate **Linux container** (or rare host profile) for **one command** | Untrusted scripts, hard no-network, Linux-like runs — stronger than Seatbelt for that job |
+
+**Rule of thumb:** edit the project with Grok under sandbox. Cage only the scary commands.
 
 ```text
-devcage grok
-    │
-    ├─ Grok --sandbox keys-first   (Seatbelt: write project + ~/.grok + tmp;
-    │                               deny **/.env, **/*.pem, … via .grok/sandbox.toml)
-    ├─ .grok/config.toml           (permission allow/deny for Bash/Read/Edit)
-    ├─ DEVCAGE_DATA_DIR            (sandbox-safe session data for nested devcage)
-    ├─ PATH includes this devcage  (so `devcage run` works inside Grok)
-    │
-    └─ optional deep cage:
-         devcage run -p offline|untrusted|agent -- <cmd>
+You run:  devcage grok
+              │
+              ▼
+         Grok (host) + skills + built-in tools
+         limited by Seatbelt + .grok recipes
+              │
+              │  when needed:
+              ▼
+         devcage run -p offline -- ./sketchy.sh
+              │
+              ▼
+         Linux container: project mounted, no host home, network none
 ```
 
-Complementary tools (not replaced by DevCage):
+Complementary tools (still your key/package story — DevCage does not replace them):
 
-| Tool | Role |
-|------|------|
-| **mcp-secret-launcher** | Keys in Keychain → MCP process env only |
-| **mcp-guard** | MCP tool policy / HITL |
-| **pkg-guard** | `uvx` / `npx` supply-chain shims |
+| Tool | Meaning |
+|------|---------|
+| **mcp-secret-launcher** | MCP API keys live in **Keychain**, not in `mcp.json` |
+| **mcp-guard** | Policy / HITL on **MCP tool calls** |
+| **pkg-guard** | Policy on **package installs** (`uvx` / `npx` shims) |
 
-See [recommended-stack.md](./recommended-stack.md).
+Deeper architecture: [recommended-stack.md](./recommended-stack.md).
 
-### Daily entrypoint: `devcage grok`
+---
+
+### First-time setup (do this once per machine)
+
+Each step has a purpose — do not skip install if you care about nested Docker.
+
+| Step | Command | What it means |
+|------|---------|----------------|
+| **1. Build / install `devcage`** | `./scripts/build.sh --release` then `./scripts/install.sh` (or `cp target/release/devcage ~/.local/bin/`) | Puts `devcage` on your PATH so both you and nested Grok shells can run it |
+| **2. Ensure Grok is installed** | `which grok` | Combined mode launches **host** Grok, not a container image |
+| **3. Container runtime (for deep cage)** | Colima/Docker or Podman; `devcage doctor` | Without this, `run -p offline` cannot start a Linux cage |
+| **4. Pull image (optional but useful)** | `devcage pull` | Downloads Alpine (default) so first offline run is faster |
+| **5. Seed project recipes** | `cd your-project && devcage init-grok` | Writes `.grok/sandbox.toml` + `.grok/config.toml` into **this repo** |
+
+**What “seed recipes” means:**
+DevCage writes project-local config that Grok loads when you use `--sandbox keys-first`:
+
+| File | Layer | Meaning |
+|------|--------|---------|
+| `.grok/sandbox.toml` | **Kernel** (Seatbelt) | Profile `keys-first`: extends Grok **`strict`** (mostly project-only reads), secret path `deny`, and **directory-only** `read_only` tool paths (Homebrew, `~/.local/bin`, Colima, …) so nested Docker still works |
+| `.grok/config.toml` | **Model policy** | Soft rules: deny Keychain/`security`, host break-glass bash, secret paths; allow cargo/git and safe `devcage run -p offline\|…` |
+
+After **upgrading** DevCage, re-seed so recipes stay current:
+
+```bash
+devcage init-grok --force
+```
+
+**Why `--force`:** without it, existing `.grok/*` files are left alone (so old broken recipes can stick around).
+
+---
+
+### Daily workflow (what to type every day)
+
+#### Step A — Start the combined session
 
 ```bash
 cd /path/to/your-project
 devcage grok
 ```
 
-What it does:
+**What this means (in order):**
 
-1. Resolves workspace (cwd or git root; override with `-w` / `DEVCAGE_WORKSPACE`).
-2. **Seeds** project recipes if missing (unless `--no-init`):
-   - `.grok/sandbox.toml` — profile `keys-first` (**extends Grok `strict`** + expanded secret `deny` + `restrict_network`)
-   - `.grok/config.toml` — permission deny for secrets / `security` / break-glass host; allow offline/untrusted/agent deep cage
-3. Sets child env:
-   - `DEVCAGE_DATA_DIR` — sandbox-safe (`$TMPDIR/devcage-data`, not `~/.local/share`)
-   - `DEVCAGE_MODE=grok-sandbox`
-   - `DEVCAGE_GROK_SANDBOX=<profile>`
-   - `DEVCAGE_DENY_HOST=1` — nested `devcage run -p host` **refused** (override with `--allow-host-profile`)
-   - Stable `PATH` (`/usr/bin`, Homebrew, this binary, `~/.local/bin`, `~/.grok/bin`, …)
-4. **Scrubs** ambient secrets from the Grok process: `SSH_AUTH_SOCK`, AWS secret keys, `GITHUB_TOKEN` / `GH_TOKEN`, OpenAI/Anthropic keys (keeps `XAI_API_KEY` if set).
-5. Runs: **`grok --sandbox <profile> …`** (default profile `keys-first`).
+1. **Find the project root**
+   Uses current directory or git root (`-w` / `DEVCAGE_WORKSPACE` to override). Grok’s cwd and recipe paths are this project.
 
-After upgrading DevCage, re-seed recipes:
+2. **Seed recipes if missing**
+   Same as `init-grok` unless you pass `--no-init`. Does not overwrite unless `--force-init`.
 
-```bash
-devcage init-grok --force
-# or: devcage grok --force-init
-```
+3. **Pick a sandbox-safe DevCage data directory**
+   Session metadata / ephemeral homes go under something like `$TMPDIR/devcage-data`, **not** `~/.local/share/devcage` (Seatbelt often blocks that).
+   Exported as `DEVCAGE_DATA_DIR` so nested `devcage run` writes somewhere the sandbox allows.
 
-Startup banner (stderr):
+4. **Prepare a safer Grok process environment**
+   - `DEVCAGE_MODE=grok-sandbox` — marks “we’re in combined mode”
+   - `DEVCAGE_DENY_HOST=1` — nested **`devcage run -p host` is refused** (break-glass blocked by default)
+   - **Scrub** ambient secrets from the child: `SSH_AUTH_SOCK`, AWS secret keys, GitHub/OpenAI/Anthropic tokens (**keeps** `XAI_API_KEY` if set so Grok can still auth)
+   - **Stable PATH** — system bins + Homebrew + this `devcage` + `~/.local/bin` + `~/.grok/bin` so tools aren’t “not found” under sandbox
+
+5. **Start Grok under Seatbelt**
+   Effectively: `grok --sandbox keys-first` (or another profile you pass).
+   From here, **every** Grok built-in tool (edit, bash, …) runs under that kernel policy.
+
+**Banner fields (stderr) — what they mean:**
 
 ```text
 devcage mode: grok-sandbox
-  sandbox:   keys-first
-  workspace: /path/to/project
-  data_dir:  /var/folders/…/T/devcage-data   # or ~/.local/share/devcage
-  deep cage: devcage run -p offline|untrusted|agent -- <cmd>
+  sandbox:   keys-first          ← Grok Seatbelt profile name
+  workspace: /path/to/project    ← project root
+  data_dir:  …/T/devcage-data    ← where nested DevCage sessions store data
+  deny_host: 1                   ← host profile blocked
+  scrub:     SSH_AUTH_SOCK, …    ← env vars removed from Grok
+  deep cage: devcage run -p …    ← how to go deeper when needed
+  limits:    devcage limits      ← how to self-test isolation
 ```
 
-### `devcage grok` flags
+**Dry-run (see plan without starting Grok):**
+
+```bash
+devcage grok --print
+```
+
+#### Step B — Normal coding inside Grok
+
+Use Grok as usual (chat, skills, edit files, run tests).
+
+| You expect | Meaning |
+|------------|---------|
+| Can edit project files | Seatbelt allows writes under the project (+ `~/.grok` / temp) |
+| Cannot write Desktop / random home paths | Kernel write scope |
+| Cannot casually read other repos / `~/.ssh` | `strict`-based profile + deny globs |
+| Cannot create/read `**/.env` style secrets in tree | Kernel `deny` in `.grok/sandbox.toml` |
+| Host HTTPS may still work on macOS | Seatbelt net limits are weak on macOS — **not** a bug in DevCage |
+
+#### Step C — Deep cage only when needed
+
+Still inside the same Grok session (or any shell that inherited env):
+
+```bash
+devcage run -p offline -- ./sketchy-setup.sh   # no network, disposable
+devcage run -p untrusted -- sh                 # stricter offline-style
+devcage run -p agent -- make test              # full container network
+devcage limits                                 # self-test (JSON)
+```
+
+**What each profile means here:**
+
+| Profile | Meaning |
+|---------|---------|
+| **`offline`** | Linux container, **network=none**, hardened, wipe by default — use for untrusted / “no net” jobs |
+| **`untrusted`** | Like offline but stricter (always wipe, no host package caches) |
+| **`agent`** | Linux container with **full container network** (honest label — not an allowlist) |
+| **`host`** | **Denied** under `devcage grok` by default — almost no isolation |
+
+**Why nested run works without extra exports:**
+`devcage grok` already set `DEVCAGE_DATA_DIR` and a usable `PATH`. The child `devcage` finds Docker (via allowed Homebrew paths in the sandbox recipe) and writes sessions under the temp data dir.
+
+#### Step D — When you upgrade DevCage
+
+```bash
+# outside sandbox (normal terminal)
+cargo build --release && cp target/release/devcage ~/.local/bin/
+devcage init-grok --force    # refresh .grok recipes
+devcage grok                 # new session picks up new binary + recipes
+```
+
+**Meaning:** old binaries may export a bad data dir or list files in `read_only`; old recipes may extend `workspace` (too open) or include illegal file paths.
+
+---
+
+### What each important command means
+
+| Command | Meaning in one line |
+|---------|---------------------|
+| **`devcage grok`** | “Start Grok in combined mode: Seatbelt + recipes + safe env for nested DevCage.” |
+| **`devcage init-grok`** | “Only write/update `.grok` recipes; do not start Grok.” |
+| **`devcage init-grok --force`** | “Overwrite recipes with the current embedded defaults (absolute tool **directories**).” |
+| **`devcage grok --print`** | “Show env + command that would run; exit without Grok.” |
+| **`devcage grok --force-init`** | “Re-seed recipes, then start Grok.” |
+| **`devcage grok --strict`** | “Use Grok’s built-in `strict` profile name instead of `keys-first`.” |
+| **`devcage grok --allow-host-profile`** | “Allow nested `run -p host` (sets `DEVCAGE_DENY_HOST=0`) — rarely needed.” |
+| **`devcage limits`** | “Run isolation probes and print JSON (data dir, secret deny, home limits, offline net, host deny).” |
+| **`devcage doctor`** | “Is Docker/Podman ready? Where is data_dir?” |
+| **`devcage run -p offline -- …`** | “Run this command in a disposable no-net Linux cage.” |
+| **`devcage agent`** | “Run an agent *binary inside* a cage” — **not** the daily Grok path (use `devcage grok` instead). |
+
+### `devcage grok` flags (reference)
 
 | Flag / env | Default | Meaning |
 |------------|---------|---------|
-| `--sandbox <name>` | `keys-first` | Passed to `grok --sandbox`. Env: `DEVCAGE_GROK_SANDBOX` |
+| `--sandbox <name>` | `keys-first` | Name passed to `grok --sandbox` (must exist in Grok built-ins or `.grok/sandbox.toml`) |
 | `--strict` | off | Shortcut for `--sandbox strict` |
-| `--no-init` | off | Do not write `.grok/` recipes |
-| `--force-init` | off | Overwrite existing `.grok` recipes when seeding |
-| `--allow-host-profile` | off | Sets `DEVCAGE_DENY_HOST=0` so nested `run -p host` is allowed |
-| `--print` | off | Print plan (`mode`, `DEVCAGE_DATA_DIR`, scrub list, command); do **not** start Grok |
-| `-w` / `--workspace` | cwd / git root | Project root for recipes and Grok cwd. Env: `DEVCAGE_WORKSPACE` |
-| trailing args | — | Forwarded to Grok after `--sandbox <name>` |
+| `--no-init` | off | Do not write `.grok/` files |
+| `--force-init` | off | Overwrite existing recipes |
+| `--allow-host-profile` | off | Allow break-glass host profile for nested DevCage |
+| `--print` | off | Dry-run plan only |
+| `-w` / `--workspace` | cwd / git root | Project root |
+| trailing args | — | Passed to Grok (e.g. `-p "prompt" --always-approve`) |
 
 Examples:
 
 ```bash
-# Interactive Grok under keys-first sandbox
 devcage grok
-
-# Dry-run
 devcage grok --print
-
-# Built-in Grok profiles (no custom keys-first file required for these names)
-devcage grok --sandbox workspace
-devcage grok --sandbox strict
-devcage grok --sandbox read-only
-
-# Headless / single-turn Grok (args after --)
 devcage grok -- -p "Summarize README.md" --always-approve
-
-# Force re-seed recipes
-devcage grok --force-init
-
-# Only seed recipes (do not start Grok)
-devcage init-grok
 devcage init-grok --force
 ```
 
-### Recipes under `.grok/`
+---
 
-| File | Purpose |
-|------|---------|
-| `.grok/sandbox.toml` | Custom profile **`keys-first`**: extends Grok `workspace`, kernel `deny` for secret globs (`**/.env`, `**/*.pem`, `**/.ssh/**`, …) |
-| `.grok/config.toml` | Permission rules: deny secret paths / dangerous Bash; allow project tools + `Bash(devcage *)` |
+### Recipes under `.grok/` (what they control)
 
-Templates: [examples/grok/](../examples/grok/) (also embedded in the binary for `init-grok` / `grok` seed).
+| File | Who enforces it | Meaning |
+|------|-----------------|---------|
+| **`.grok/sandbox.toml`** | **Kernel** (Grok Seatbelt) | Hard FS limits. `keys-first` extends **`strict`**, denies secret globs, opens **directories only** for tools (`/opt/homebrew`, `~/.local/bin`, `~/.colima`, …). **Files** in `read_only` (e.g. `~/.gitconfig`) make Grok refuse to start. |
+| **`.grok/config.toml`** | **Grok permission engine** | Soft policy on tool calls (deny `security`, host break-glass bash; allow cargo + safe `devcage` forms). Complements but does not replace Seatbelt. |
 
-Tune denylists for your layout. Grok docs: sandbox + permissions under `~/.grok/docs/user-guide/` (`18-sandbox.md`, `22-permissions-and-safety.md`).
+Generated by `init-grok` / first `devcage grok`. Absolute tool paths are filled for **this machine’s HOME**.
 
-### Nested deep cage (from inside Grok)
+Upstream Grok docs: `~/.grok/docs/user-guide/18-sandbox.md`, `22-permissions-and-safety.md`.
 
-While Grok is running via `devcage grok`, the agent (or you) can run:
+---
 
-```bash
-devcage run -p offline -- ./sketchy-setup.sh
-devcage run -p untrusted -- sh -c 'curl …'    # think twice
-devcage run -p agent -- make test             # full container network
-devcage doctor                                # check data_dir / data_dir_note
-```
+### Data directory (`DEVCAGE_DATA_DIR`) — what it means
 
-Because `DEVCAGE_DATA_DIR` and `PATH` are set, nested `devcage` should work without extra exports.
+DevCage stores session ids, ephemeral homes, and event logs under **data_dir**.
 
-### Data directory under Grok sandbox
-
-Grok `workspace` / `keys-first` typically allow writes to:
-
-- project CWD
-- `~/.grok/`
-- `/tmp` (and macOS temp)
-
-Default DevCage dir `~/.local/share/devcage` is often **blocked**.
-
-**Automatic behavior:** if the default is not writable, DevCage write-probes and relocates to the first usable of:
-
-1. `$TMPDIR/devcage-data`
-2. `/tmp/devcage-data`
-3. `./.devcage-data`
-
-Prints a stderr note; `devcage doctor` exposes `data_dir` and `data_dir_note`.
-
-Optional pin:
+| Situation | Meaning |
+|-----------|---------|
+| Under `devcage grok` | Forced to a **sandbox-writable** path (`$TMPDIR/devcage-data`, …) so nested runs do not hit `Operation not permitted` on `~/.local/share` |
+| Auto-fallback (any run) | If the configured dir is not writable, try `$TMPDIR` → `/tmp` → `./.devcage-data` and print a note |
+| Explicit export | You set `DEVCAGE_DATA_DIR=…`; if unusable under sandbox, DevCage still tries sandbox-safe fallback |
 
 ```bash
+# optional pin (usually unnecessary with current devcage grok)
 export DEVCAGE_DATA_DIR="${TMPDIR:-/tmp}/devcage-data"
 ```
 
-Explicit `DEVCAGE_DATA_DIR` is never overridden by auto-fallback.
+---
 
-### Grok sandbox vs DevCage (what each does)
+### Grok sandbox vs DevCage (compare)
 
-| Concern | Grok `--sandbox` (via `devcage grok`) | `devcage run` container |
-|---------|----------------------------------------|-------------------------|
-| All built-in Edit/Bash | **Limited** for whole session | Only if that command is run in the cage |
-| Write only project (+ Grok state/tmp) | **Yes** | Per mount plan |
-| Kernel deny `**/.env` etc. | **Yes** (recipe) | Don’t mount secrets; project still visible if mounted |
-| Hard network none (macOS) | Weak / often no-op | **`offline` / `untrusted`** |
+| Concern | Grok sandbox (`devcage grok`) | Deep cage (`devcage run`) |
+|---------|-------------------------------|---------------------------|
+| Applies to all Grok edits/bash | **Yes** | Only that command |
+| Limit writes to project | **Yes** | Mount policy |
+| Deny secret path globs | **Yes** (kernel) | Don’t mount secrets |
+| Hard no network (macOS) | Often **no** | **`offline` / `untrusted`** |
 | Linux userland | No | **Yes** |
-| Wipe disposable HOME | No (uses `~/.grok`) | **Yes** |
-| Global skills / Grok auth | **Native** | N/A (Grok stays on host in this model) |
+| Wipe disposable HOME | No | **Yes** |
+| Global skills / auth | **Native host** | N/A |
 
-### Other Grok-related commands
+---
 
-| Command | When to use |
-|---------|-------------|
-| **`devcage grok`** | Daily: Grok + OS sandbox + DevCage-ready env |
-| **`devcage init-grok`** | Seed `.grok` only |
-| **`devcage agent`** | Run agent **inside** a cage profile (container or fallback) — not the daily Grok path |
-| **`devcage agent --host-restricted`** | Host process + ephemeral HOME + env scrub + **auth seed** for `~/.grok/auth.json` |
-| **`devcage agent --offline`** | Agent CLI under offline container profile (needs Linux agent in image) |
+### `devcage agent` vs `devcage grok` (do not confuse)
 
-#### `devcage agent` vs `devcage grok`
-
-| | `devcage grok` | `devcage agent` / `agent --host-restricted` |
-|--|----------------|-----------------------------------------------|
-| Goal | Daily Grok UX + sandbox | Put *an agent binary* in a DevCage session |
-| Grok process | On host under Seatbelt | Optional; often wrong for Darwin Grok in Linux image |
-| Built-ins | Full Grok tools | Depends on binary in venue |
-| Auth | Normal `~/.grok` | `agent-host` seeds `auth.json` into ephemeral HOME |
-| Recommended | **Yes** for daily | Deep / special cases |
-
-#### Host-restricted agent notes (`agent-host`)
+| | **`devcage grok`** | **`devcage agent` / `--host-restricted`** |
+|--|--------------------|-------------------------------------------|
+| Purpose | Daily coding with isolation on **built-ins** | Run an agent **inside** a DevCage session |
+| Process | Host Grok + Seatbelt | Agent binary in container or agent-host |
+| Skills / auth | Normal | agent-host seeds `~/.grok/auth.json` into ephemeral HOME |
+| Recommended | **Yes** | Special cases only |
 
 ```bash
+# Special case — not daily:
 devcage agent --host-restricted
-# or: devcage agent --host-restricted grok -- -p "…" --always-approve
 ```
 
-- Profile **`agent-host`**: host backend, ephemeral `$HOME`, env scrub (cloud/SSH ambient; **keeps** `XAI_API_KEY`).
-- Copies real home **`~/.grok/auth.json`** and config into the session home so Grok can sign in.
-- **Not** a container; weaker than Grok Seatbelt for FS policy. Prefer **`devcage grok`** for daily isolation of built-ins.
+---
 
-Default agent name is **`grok`** (`DEVCAGE_DEFAULT_AGENT`).
-
-### What is *not* supported as a first-class mode
-
-- **Cursor CLI** — no `devcage cursor`. Use `devcage run` from Cursor’s shell if needed.
-- **Grok entirely inside Alpine** — skills/auth pain; not the recommended path.
-- **MCP proxy for every built-in tool** — fights Grok UX; use sandbox instead.
-
-### Grok troubleshooting
-
-| Symptom | Likely cause | Fix |
-|---------|--------------|-----|
-| `devcage error: Operation not permitted` under sandbox | Data dir under `~/.local/share` blocked, or stale `DEVCAGE_DATA_DIR` from an old `devcage grok` | Rebuild/install latest DevCage; **restart** with `devcage grok` (exports sandbox-safe `$TMPDIR/devcage-data`). This session: `export DEVCAGE_DATA_DIR=$TMPDIR/devcage-data` |
-| `profile host is denied` | `DEVCAGE_DENY_HOST=1` (default under `devcage grok`) | Use `offline` / `untrusted` / `agent`, or `--allow-host-profile` / `DEVCAGE_DENY_HOST=0` |
-| Still can read other repos / `~/.ssh` | Old `.grok/sandbox.toml` (extended `workspace`) | `devcage init-grok --force` then restart Grok (new recipe extends **`strict`**) |
-| `SSH_AUTH_SOCK` still set | Old `devcage grok` binary | Install latest; restart session |
-| Host HTTPS still works under sandbox | macOS Seatbelt limitation | Expected; use `devcage run -p offline` for no-net jobs |
-| Keychain still reachable | Host process | Use mcp-secret-launcher + mcp-guard; sandbox cannot fully block Security.framework |
-| `grok not found on PATH` | Grok not installed | Install Grok Build; check `PATH` |
-| Sandbox profile `keys-first` unknown | Missing `.grok/sandbox.toml` | `devcage init-grok` or `devcage grok` (seeds by default) |
-| `Expected a directory but got a file` (e.g. `.gitconfig`) | `read_only` listed a **file** | `devcage init-grok --force` with latest DevCage (only directories are emitted) |
-| Nested `devcage` not found | Old session without mode | Use `devcage grok` so PATH is fixed; or install `devcage` globally |
-| Docker offline fails | Colima/Docker down | `colima start` / `devcage doctor` |
-| Agent “not logged in” under `agent-host` | Auth not seeded | Ensure `~/.grok/auth.json` exists; use current DevCage with `auth_seed` |
-| Want only Grok sandbox, no DevCage | — | `grok --sandbox keys-first` after `devcage init-grok` |
-
-### Probe limits
+### Probe isolation: `devcage limits`
 
 ```bash
-# Inside a devcage grok session (or any shell):
+# Best inside a devcage grok session:
 devcage limits
 ```
 
-JSON report: data dir, secret write deny, home read limits, host HTTPS note, `SSH_AUTH_SOCK` scrub, `DEVCAGE_DENY_HOST`, offline container echo + net block, host profile refusal.
+**What it means:** runs automated checks and prints JSON:
 
-### Headless example (CI-style smoke)
+- Can we write data_dir / project?
+- Is `.env` write blocked? Outside project write blocked?
+- Are sibling home paths limited?
+- Is host HTTPS reachable? (informational on macOS)
+- Is `SSH_AUTH_SOCK` scrubbed in grok mode?
+- Is `DEVCAGE_DENY_HOST` armed?
+- Does offline container work and block network?
+
+`pass: true` means **critical** checks succeeded (not every informational flag).
+
+---
+
+### What is *not* supported as a first-class mode
+
+| Not supported | Meaning |
+|---------------|---------|
+| **`devcage cursor`** | No Cursor combined mode; you can still call `devcage run` from Cursor’s shell |
+| **Grok inside Alpine daily** | Skills/auth break; use host Grok + sandbox instead |
+| **MCP as replacement for all built-ins** | Model ignores dual APIs; use Seatbelt on built-ins |
+| **Full Keychain lockout via sandbox alone** | Keep mcp-secret-launcher + mcp-guard |
+
+---
+
+### Troubleshooting (symptom → meaning → fix)
+
+| Symptom | What it means | Fix |
+|---------|----------------|-----|
+| `Expected a directory but got a file` (e.g. `.gitconfig`) | `read_only` listed a **file**; Grok requires **directories** | Latest DevCage + `devcage init-grok --force` |
+| `profile host is denied` | Combined mode blocks break-glass host | Use `offline`/`untrusted`/`agent`, or `--allow-host-profile` |
+| `Operation not permitted` on data dir | Session data under blocked home path | Use current `devcage grok` (temp data_dir) or export `DEVCAGE_DATA_DIR=$TMPDIR/devcage-data` |
+| Docker / Homebrew “not permitted” under sandbox | `strict` without tool **directories** in recipe | `init-grok --force` so `/opt/homebrew`, `~/.colima`, `~/.local/bin` are listed |
+| Nested offline: no container runtime | Docker not on PATH or Colima down, or recipe blocks tool paths | `colima start`; re-seed recipes; restart `devcage grok` |
+| Host HTTPS still works | macOS Seatbelt does not equal “no network” | Use `devcage run -p offline` for no-net jobs |
+| Keychain still usable | Host process can call Security APIs | mcp-secret-launcher + mcp-guard; don’t put secrets in project |
+| Can still read other repos | Old recipe extended `workspace` | Re-seed (`extends = strict`) + restart Grok |
+| `SSH_AUTH_SOCK` still set | Old binary did not scrub | Install latest; restart via `devcage grok` |
+| `keys-first` unknown | Recipe missing | `devcage init-grok` or plain `devcage grok` |
+| Agent “not logged in” on agent-host | Ephemeral HOME without auth seed | Prefer `devcage grok`; or ensure `~/.grok/auth.json` + current DevCage |
+
+---
+
+### Headless smoke (optional)
 
 ```bash
 devcage grok --print
 devcage grok --no-init -- -p "Reply with only: pong" --always-approve
 ```
 
+**Meaning:** `--print` checks wiring; `-p` is Grok single-turn mode for automation.
+
 ---
 
-## Happy path (all commands)
+## Happy path (command checklist)
 
 ```bash
-devcage doctor
-devcage verify
+devcage doctor          # runtime ready?
+devcage verify          # basic isolation smoke
+devcage init-grok       # first time / after upgrade use --force
+devcage grok            # daily session
 
-# Daily Grok
-devcage grok
-
-# Deep cage
-devcage pull
+# inside Grok or a nested shell:
+devcage limits
 devcage run -p offline -- echo hi
-devcage run -p untrusted -- sh
-devcage run -p agent -- sh -c 'uname -a'
-devcage shell -p offline
-devcage agent --host-restricted
-devcage export <session-id> out.txt ./out.txt
-devcage stop --wipe
-devcage clean
+devcage pull            # once, for image
 ```
 
 ### Host break-glass (no real isolation)
 
+Only outside combined mode, or with `--allow-host-profile`:
+
 ```bash
-devcage run -p host -- /usr/bin/true
+devcage run -p host --allow-host-profile -- /usr/bin/true
 ```
 
 ## Start banner (session commands)
