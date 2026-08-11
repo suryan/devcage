@@ -245,6 +245,7 @@ Default agent name is **`grok`** (`DEVCAGE_DEFAULT_AGENT`).
 | Keychain still reachable | Host process | Use mcp-secret-launcher + mcp-guard; sandbox cannot fully block Security.framework |
 | `grok not found on PATH` | Grok not installed | Install Grok Build; check `PATH` |
 | Sandbox profile `keys-first` unknown | Missing `.grok/sandbox.toml` | `devcage init-grok` or `devcage grok` (seeds by default) |
+| `Expected a directory but got a file` (e.g. `.gitconfig`) | `read_only` listed a **file** | `devcage init-grok --force` with latest DevCage (only directories are emitted) |
 | Nested `devcage` not found | Old session without mode | Use `devcage grok` so PATH is fixed; or install `devcage` globally |
 | Docker offline fails | Colima/Docker down | `colima start` / `devcage doctor` |
 | Agent “not logged in” under `agent-host` | Auth not seeded | Ensure `~/.grok/auth.json` exists; use current DevCage with `auth_seed` |

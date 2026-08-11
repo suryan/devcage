@@ -1,25 +1,35 @@
-# Grok sandbox profile for keys-first projects (kernel-enforced).
-# Seeded by: devcage grok | devcage init-grok
-# Run:        grok --sandbox keys-first
+# Reference / docs copy of the keys-first Grok sandbox profile.
+# Runtime seeding (`devcage grok` / `init-grok`) generates this with
+# **absolute** tool paths for the current host (Homebrew, ~/.local/bin, Colima).
 #
-# Extends `strict` so reads are limited to the project (CWD) + system paths —
-# not the whole home disk (other repos, random files under ~).
-# Complements mcp-secret-launcher + mcp-guard + pkg-guard.
-# DevCage offline/untrusted still required for hard no-network on macOS.
+# Do not rely on hand-copying this file alone on a new machine — run:
+#   devcage init-grok --force
+#
+# Extends Grok `strict` + re-opens only tool paths needed for nested DevCage.
+# Hard no-network on macOS: still use `devcage run -p offline`.
 
 [profiles.keys-first]
 extends = "strict"
-# Linux: block child process network. On macOS this is often a no-op (Grok docs).
 restrict_network = true
 
-# Extra writable paths used by nested DevCage under sandbox.
-read_write = [
-  # Session data (devcage grok also sets DEVCAGE_DATA_DIR under $TMPDIR)
+# Placeholder — real file from `init-grok` lists absolute paths, e.g.:
+#   "/opt/homebrew",
+#   "/usr/local",
+#   "/Users/you/.local/bin",
+#   "/Users/you/.grok/bin",
+#   "/Users/you/.colima",
+#   "/Users/you/.docker",
+# Never list files (e.g. ~/.gitconfig) — Grok requires directories only.
+read_only = [
+  "/opt/homebrew",
+  "/usr/local",
 ]
 
-# Kernel deny: read + write/rename (globs are gitignore-style).
+read_write = [
+  "./.devcage-data",
+]
+
 deny = [
-  # Project / tree secrets
   "**/.env",
   "**/.env.*",
   "**/local.env",
@@ -33,8 +43,6 @@ deny = [
   "**/secrets.yaml",
   "**/secrets.yml",
   "**/secrets.toml",
-
-  # Home secret stores (directory + contents)
   "**/.ssh",
   "**/.ssh/**",
   "**/.aws",
@@ -48,8 +56,6 @@ deny = [
   "**/.netrc",
   "**/.npmrc",
   "**/.pypirc",
-
-  # macOS keychain-adjacent paths (best-effort; API may still work)
   "**/Library/Keychains/**",
   "**/Library/Keychains",
 ]
