@@ -63,6 +63,9 @@ pub enum Commands {
         /// Keep session home even if the profile would wipe by default.
         #[arg(long)]
         keep: bool,
+        /// Allow profile `host` even when `DEVCAGE_DENY_HOST=1` (e.g. under `devcage grok`).
+        #[arg(long)]
+        allow_host_profile: bool,
         /// Command and args after `--`.
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         command: Vec<String>,
@@ -86,6 +89,9 @@ pub enum Commands {
         /// Keep session home even if the profile would wipe by default.
         #[arg(long)]
         keep: bool,
+        /// Allow profile `host` even when `DEVCAGE_DENY_HOST=1`.
+        #[arg(long)]
+        allow_host_profile: bool,
     },
     /// Stop a session and optionally wipe ephemeral data.
     Stop {
@@ -139,20 +145,29 @@ pub enum Commands {
         #[arg(long)]
         all: bool,
     },
+    /// Probe isolation limits (sandbox + nested `DevCage`) as JSON.
+    Limits,
     /// Combined mode: Grok OS sandbox + DevCage-ready env (recommended daily).
     ///
     /// Seeds `.grok/` recipes if missing, sets `DEVCAGE_DATA_DIR` for nested
-    /// `devcage run`, then execs `grok --sandbox <profile> …`.
+    /// `devcage run`, scrubs ambient secrets from the child env, denies profile
+    /// `host` by default, then execs `grok --sandbox <profile> …`.
     Grok {
         /// Grok sandbox profile (`keys-first`, `workspace`, `strict`, …).
         #[arg(long, default_value = "keys-first", env = "DEVCAGE_GROK_SANDBOX")]
         sandbox: String,
+        /// Shortcut for `--sandbox strict` (maximum Grok FS sandbox).
+        #[arg(long)]
+        strict: bool,
         /// Do not seed `.grok/sandbox.toml` / `.grok/config.toml`.
         #[arg(long)]
         no_init: bool,
         /// Overwrite existing `.grok` recipes when seeding.
         #[arg(long)]
         force_init: bool,
+        /// Allow nested `devcage run -p host` (sets `DEVCAGE_DENY_HOST=0`).
+        #[arg(long)]
+        allow_host_profile: bool,
         /// Print the planned command and env; do not start Grok.
         #[arg(long)]
         print: bool,
@@ -277,6 +292,8 @@ mod tests {
             print,
             args,
             no_init,
+            strict,
+            allow_host_profile,
             ..
         } = cli.command
         else {
@@ -285,7 +302,15 @@ mod tests {
         assert_eq!(sandbox, "workspace");
         assert!(print);
         assert!(!no_init);
+        assert!(!strict);
+        assert!(!allow_host_profile);
         assert_eq!(args, vec!["-p", "hi"]);
+    }
+
+    #[test]
+    fn parses_limits() {
+        let cli = Cli::try_parse_from(["devcage", "limits"]).expect("parse");
+        assert!(matches!(cli.command, Commands::Limits));
     }
 
     #[test]

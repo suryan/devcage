@@ -10,11 +10,13 @@ cp config.toml  /path/to/your-app/.grok/
 
 ```bash
 cd /path/to/your-app
-grok --sandbox keys-first
-# DevCage auto-relocates session data if ~/.local/share is blocked.
-# Optional pin: export DEVCAGE_DATA_DIR="${TMPDIR:-/tmp}/devcage-data"
+# Preferred:
+devcage grok
+# After DevCage upgrades, re-seed recipes:
+devcage init-grok --force
+devcage limits
 ```
 
-**Composition:** DevCage write-probes the default data dir and falls back to `$TMPDIR` under Grok sandbox. See [docs/recommended-stack.md](../../docs/recommended-stack.md#do-they-work-together-tested).
+Recipes: `keys-first` extends Grok **`strict`**, expanded secret denylist, permission deny for host break-glass.
 
-Full model: [docs/recommended-stack.md](../../docs/recommended-stack.md).
+Full model: [docs/usage.md](../../docs/usage.md) · [recommended-stack.md](../../docs/recommended-stack.md).

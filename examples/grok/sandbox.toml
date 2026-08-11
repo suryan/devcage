@@ -1,34 +1,55 @@
-# Example Grok sandbox profile for keys-first projects.
-# Copy to: <project>/.grok/sandbox.toml
-# Run:     grok --sandbox keys-first
+# Grok sandbox profile for keys-first projects (kernel-enforced).
+# Seeded by: devcage grok | devcage init-grok
+# Run:        grok --sandbox keys-first
 #
-# Kernel-enforced (Seatbelt on macOS / Landlock+bwrap on Linux).
+# Extends `strict` so reads are limited to the project (CWD) + system paths —
+# not the whole home disk (other repos, random files under ~).
 # Complements mcp-secret-launcher + mcp-guard + pkg-guard.
-# DevCage is optional for untrusted/offline/Linux jobs — not required for every edit.
+# DevCage offline/untrusted still required for hard no-network on macOS.
 
 [profiles.keys-first]
-extends = "workspace"
-# Child network block is Linux-oriented; on macOS treat as soft guidance.
-# restrict_network = true
+extends = "strict"
+# Linux: block child process network. On macOS this is often a no-op (Grok docs).
+restrict_network = true
 
-# Deny secret material in the tree (read + write/rename). Expand for your layout.
+# Extra writable paths used by nested DevCage under sandbox.
+read_write = [
+  # Session data (devcage grok also sets DEVCAGE_DATA_DIR under $TMPDIR)
+]
+
+# Kernel deny: read + write/rename (globs are gitignore-style).
 deny = [
+  # Project / tree secrets
   "**/.env",
   "**/.env.*",
   "**/local.env",
   "**/*.pem",
   "**/*.p12",
+  "**/*.key",
   "**/*id_rsa*",
   "**/*id_ed25519*",
-  "**/.aws/**",
-  "**/.ssh/**",
-  "**/.gnupg/**",
   "**/credentials.json",
   "**/service-account*.json",
-]
+  "**/secrets.yaml",
+  "**/secrets.yml",
+  "**/secrets.toml",
 
-# Nested DevCage: default data dir ~/.local/share/devcage is NOT writable under
-# workspace/keys-first. Either:
-#   export DEVCAGE_DATA_DIR="${TMPDIR:-/tmp}/devcage-data"
-# or add a project-local path and allow it:
-# read_write = ["./.devcage-data"]
+  # Home secret stores (directory + contents)
+  "**/.ssh",
+  "**/.ssh/**",
+  "**/.aws",
+  "**/.aws/**",
+  "**/.gnupg",
+  "**/.gnupg/**",
+  "**/.kube",
+  "**/.kube/**",
+  "**/.docker/config.json",
+  "**/.config/gcloud/**",
+  "**/.netrc",
+  "**/.npmrc",
+  "**/.pypirc",
+
+  # macOS keychain-adjacent paths (best-effort; API may still work)
+  "**/Library/Keychains/**",
+  "**/Library/Keychains",
+]

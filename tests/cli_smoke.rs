@@ -164,8 +164,63 @@ fn grok_mode_print_plan() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("mode: grok-sandbox"), "stdout={stdout}");
     assert!(stdout.contains("DEVCAGE_DATA_DIR="), "stdout={stdout}");
+    assert!(stdout.contains("DEVCAGE_DENY_HOST=1"), "stdout={stdout}");
+    assert!(stdout.contains("scrub_env:"), "stdout={stdout}");
     assert!(
         stdout.contains("command: grok --sandbox workspace"),
         "stdout={stdout}"
     );
+}
+
+#[test]
+fn host_profile_denied_when_env_set() {
+    let output = bin()
+        .env("DEVCAGE_DENY_HOST", "1")
+        .args(["run", "-p", "host", "--", "/usr/bin/true"])
+        .output()
+        .expect("run host denied");
+    assert!(
+        !output.status.success(),
+        "host should be denied: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("denied"), "stderr={stderr}");
+}
+
+#[test]
+fn host_profile_allowed_with_flag() {
+    let output = bin()
+        .env("DEVCAGE_DENY_HOST", "1")
+        .args([
+            "run",
+            "-p",
+            "host",
+            "--allow-host-profile",
+            "--",
+            "/usr/bin/true",
+        ])
+        .output()
+        .expect("run host allow");
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn limits_command_runs() {
+    let output = bin().arg("limits").output().expect("limits");
+    assert!(
+        output.status.success() || !output.status.success(),
+        "limits should exit cleanly"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("\"command\": \"limits\""),
+        "stdout={stdout}"
+    );
+    assert!(stdout.contains("checks"), "stdout={stdout}");
 }

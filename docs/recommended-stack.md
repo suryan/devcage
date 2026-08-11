@@ -86,8 +86,8 @@ Optional project defaults (committed recipes under [examples/grok/](../examples/
 
 | File | Role |
 |------|------|
-| `.grok/sandbox.toml` | Custom profile: extend `workspace`/`strict`, deny secret globs |
-| `.grok/config.toml` | Permission deny/allow for Bash/Read/Edit |
+| `.grok/sandbox.toml` | `keys-first` extends **`strict`**, expanded secret deny, `restrict_network` |
+| `.grok/config.toml` | Permission deny secrets/`security`/host break-glass; allow offline/untrusted deep cage |
 | Project skill / rule | “Untrusted installs and offline jobs go through `devcage run`” |
 
 ### Sandbox (kernel)

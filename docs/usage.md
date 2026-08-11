@@ -66,14 +66,23 @@ What it does:
 
 1. Resolves workspace (cwd or git root; override with `-w` / `DEVCAGE_WORKSPACE`).
 2. **Seeds** project recipes if missing (unless `--no-init`):
-   - `.grok/sandbox.toml` — profile `keys-first` (extends Grok `workspace` + secret path `deny`)
-   - `.grok/config.toml` — permission allow/deny examples
+   - `.grok/sandbox.toml` — profile `keys-first` (**extends Grok `strict`** + expanded secret `deny` + `restrict_network`)
+   - `.grok/config.toml` — permission deny for secrets / `security` / break-glass host; allow offline/untrusted/agent deep cage
 3. Sets child env:
-   - `DEVCAGE_DATA_DIR` — from config (auto-relocated under Grok sandbox if needed)
+   - `DEVCAGE_DATA_DIR` — sandbox-safe (`$TMPDIR/devcage-data`, not `~/.local/share`)
    - `DEVCAGE_MODE=grok-sandbox`
    - `DEVCAGE_GROK_SANDBOX=<profile>`
-   - Prepends the directory of this `devcage` binary to `PATH`
-4. Runs: **`grok --sandbox <profile> …`** (default profile `keys-first`).
+   - `DEVCAGE_DENY_HOST=1` — nested `devcage run -p host` **refused** (override with `--allow-host-profile`)
+   - Stable `PATH` (`/usr/bin`, Homebrew, this binary, `~/.local/bin`, `~/.grok/bin`, …)
+4. **Scrubs** ambient secrets from the Grok process: `SSH_AUTH_SOCK`, AWS secret keys, `GITHUB_TOKEN` / `GH_TOKEN`, OpenAI/Anthropic keys (keeps `XAI_API_KEY` if set).
+5. Runs: **`grok --sandbox <profile> …`** (default profile `keys-first`).
+
+After upgrading DevCage, re-seed recipes:
+
+```bash
+devcage init-grok --force
+# or: devcage grok --force-init
+```
 
 Startup banner (stderr):
 
@@ -90,9 +99,11 @@ devcage mode: grok-sandbox
 | Flag / env | Default | Meaning |
 |------------|---------|---------|
 | `--sandbox <name>` | `keys-first` | Passed to `grok --sandbox`. Env: `DEVCAGE_GROK_SANDBOX` |
+| `--strict` | off | Shortcut for `--sandbox strict` |
 | `--no-init` | off | Do not write `.grok/` recipes |
 | `--force-init` | off | Overwrite existing `.grok` recipes when seeding |
-| `--print` | off | Print plan (`mode`, `DEVCAGE_DATA_DIR`, command); do **not** start Grok |
+| `--allow-host-profile` | off | Sets `DEVCAGE_DENY_HOST=0` so nested `run -p host` is allowed |
+| `--print` | off | Print plan (`mode`, `DEVCAGE_DATA_DIR`, scrub list, command); do **not** start Grok |
 | `-w` / `--workspace` | cwd / git root | Project root for recipes and Grok cwd. Env: `DEVCAGE_WORKSPACE` |
 | trailing args | — | Forwarded to Grok after `--sandbox <name>` |
 
@@ -227,12 +238,26 @@ Default agent name is **`grok`** (`DEVCAGE_DEFAULT_AGENT`).
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | `devcage error: Operation not permitted` under sandbox | Data dir under `~/.local/share` blocked, or stale `DEVCAGE_DATA_DIR` from an old `devcage grok` | Rebuild/install latest DevCage; **restart** with `devcage grok` (exports sandbox-safe `$TMPDIR/devcage-data`). This session: `export DEVCAGE_DATA_DIR=$TMPDIR/devcage-data` |
+| `profile host is denied` | `DEVCAGE_DENY_HOST=1` (default under `devcage grok`) | Use `offline` / `untrusted` / `agent`, or `--allow-host-profile` / `DEVCAGE_DENY_HOST=0` |
+| Still can read other repos / `~/.ssh` | Old `.grok/sandbox.toml` (extended `workspace`) | `devcage init-grok --force` then restart Grok (new recipe extends **`strict`**) |
+| `SSH_AUTH_SOCK` still set | Old `devcage grok` binary | Install latest; restart session |
+| Host HTTPS still works under sandbox | macOS Seatbelt limitation | Expected; use `devcage run -p offline` for no-net jobs |
+| Keychain still reachable | Host process | Use mcp-secret-launcher + mcp-guard; sandbox cannot fully block Security.framework |
 | `grok not found on PATH` | Grok not installed | Install Grok Build; check `PATH` |
 | Sandbox profile `keys-first` unknown | Missing `.grok/sandbox.toml` | `devcage init-grok` or `devcage grok` (seeds by default) |
 | Nested `devcage` not found | Old session without mode | Use `devcage grok` so PATH is fixed; or install `devcage` globally |
 | Docker offline fails | Colima/Docker down | `colima start` / `devcage doctor` |
 | Agent “not logged in” under `agent-host` | Auth not seeded | Ensure `~/.grok/auth.json` exists; use current DevCage with `auth_seed` |
 | Want only Grok sandbox, no DevCage | — | `grok --sandbox keys-first` after `devcage init-grok` |
+
+### Probe limits
+
+```bash
+# Inside a devcage grok session (or any shell):
+devcage limits
+```
+
+JSON report: data dir, secret write deny, home read limits, host HTTPS note, `SSH_AUTH_SOCK` scrub, `DEVCAGE_DENY_HOST`, offline container echo + net block, host profile refusal.
 
 ### Headless example (CI-style smoke)
 
@@ -306,6 +331,7 @@ devcage session
 | `devcage shell -p <profile>` | `/bin/sh -l` in cage |
 | **`devcage grok […]`** | **Combined mode:** Grok `--sandbox` + DevCage-ready env (see above) |
 | **`devcage init-grok`** | Seed `.grok/sandbox.toml` + `config.toml` |
+| **`devcage limits`** | JSON isolation probes (sandbox + nested cage) |
 | `devcage agent [name] [--offline] [--host-restricted]` | Agent in cage / agent-host |
 | `devcage export <id> <src> <dest>` | Promote artifact from session |
 | `devcage logs <id>` | Session event log (JSON lines) |
@@ -324,6 +350,7 @@ devcage session
 | `DEVCAGE_DEFAULT_PROFILE` | Default for run/shell (`agent`) |
 | `DEVCAGE_DEFAULT_AGENT` | Agent binary name (`grok` by default) |
 | `DEVCAGE_GROK_SANDBOX` | Sandbox profile for `devcage grok` (`keys-first`) |
+| `DEVCAGE_DENY_HOST` | `1` under `devcage grok`: refuse profile `host` unless `--allow-host-profile` |
 | `DEVCAGE_CONTAINER_RUNTIME` | `docker` or `podman` |
 | `DEVCAGE_CONTAINER_IMAGE` | Image (default Alpine 3.20) |
 | `DEVCAGE_DATA_DIR` | Sessions + ephemeral homes (auto-fallback under sandbox) |
@@ -340,6 +367,7 @@ Mode markers set by `devcage grok` (for nested tools / debugging):
 | `DEVCAGE_MODE=grok-sandbox` | Combined mode is active |
 | `DEVCAGE_GROK_SANDBOX` | Profile name passed to Grok |
 | `DEVCAGE_DATA_DIR` | Session store for this tree of processes |
+| `DEVCAGE_DENY_HOST` | `1` blocks break-glass `host` profile |
 
 ### macOS agents in containers
 

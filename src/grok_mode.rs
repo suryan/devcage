@@ -14,8 +14,24 @@ use crate::util::which;
 const EMBEDDED_SANDBOX_TOML: &str = include_str!("../examples/grok/sandbox.toml");
 const EMBEDDED_CONFIG_TOML: &str = include_str!("../examples/grok/config.toml");
 
+/// Ambient secrets / agent sockets removed from the Grok child environment.
+const SCRUB_ENV: &[&str] = &[
+    "SSH_AUTH_SOCK",
+    "SSH_AGENT_PID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SESSION_TOKEN",
+    "AWS_SECURITY_TOKEN",
+    "GITHUB_TOKEN",
+    "GH_TOKEN",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    // Keep XAI / Grok usable; do not scrub XAI_API_KEY.
+];
+
 /// Parameters for [`run_grok_mode`].
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct GrokModeParams {
     /// Grok `--sandbox` profile name (e.g. `keys-first`, `workspace`).
     pub sandbox: String,
@@ -23,6 +39,8 @@ pub struct GrokModeParams {
     pub no_init: bool,
     /// Overwrite existing recipe files when seeding.
     pub force_init: bool,
+    /// Allow nested `devcage run -p host` (sets `DEVCAGE_DENY_HOST=0`).
+    pub allow_host_profile: bool,
     /// Print command/env only; do not exec Grok.
     pub print_only: bool,
     /// Project workspace (default: cwd / git root).
@@ -70,10 +88,9 @@ pub fn run_grok_mode(cfg: &Config, params: GrokModeParams) -> anyhow::Result<Exi
     }
 
     let grok_bin = resolve_grok_bin(cfg);
-    // Always pick a path writable *inside* Grok Seatbelt (not the host default
-    // ~/.local/share, which the parent can write but the child often cannot).
     let (data_dir, data_note) = data_dir_for_grok_sandbox_child();
     let data_dir_str = data_dir.display().to_string();
+    let deny_host = if params.allow_host_profile { "0" } else { "1" };
 
     let mut argv = vec![
         grok_bin.clone(),
@@ -86,6 +103,7 @@ pub fn run_grok_mode(cfg: &Config, params: GrokModeParams) -> anyhow::Result<Exi
         print_plan(
             &workspace,
             &data_dir_str,
+            deny_host,
             &argv,
             data_note.as_deref().or(cfg.data_dir_note.as_deref()),
         );
@@ -100,10 +118,13 @@ pub fn run_grok_mode(cfg: &Config, params: GrokModeParams) -> anyhow::Result<Exi
     eprintln!("  sandbox:   {}", params.sandbox);
     eprintln!("  workspace: {}", workspace.display());
     eprintln!("  data_dir:  {data_dir_str}");
+    eprintln!("  deny_host: {deny_host} (profile `host` blocked unless --allow-host-profile)");
+    eprintln!("  scrub:     SSH_AUTH_SOCK, AWS_* secrets, GH/OpenAI/Anthropic tokens");
     if let Some(note) = data_note.as_ref().or(cfg.data_dir_note.as_ref()) {
         eprintln!("  note:      {note}");
     }
     eprintln!("  deep cage: devcage run -p offline|untrusted|agent -- <cmd>");
+    eprintln!("  limits:    devcage limits");
     eprintln!();
 
     let mut cmd = Command::new(&grok_bin);
@@ -113,16 +134,11 @@ pub fn run_grok_mode(cfg: &Config, params: GrokModeParams) -> anyhow::Result<Exi
     cmd.env("DEVCAGE_DATA_DIR", &data_dir_str);
     cmd.env("DEVCAGE_MODE", "grok-sandbox");
     cmd.env("DEVCAGE_GROK_SANDBOX", &params.sandbox);
-    // Nested `devcage` should find this binary first.
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let prepend = dir.display().to_string();
-            let path = std::env::var_os("PATH").map_or_else(
-                || prepend.clone(),
-                |p| format!("{prepend}:{}", p.to_string_lossy()),
-            );
-            cmd.env("PATH", path);
-        }
+    cmd.env("DEVCAGE_DENY_HOST", deny_host);
+    // Stable PATH: system first, then this binary's dir, then existing PATH.
+    cmd.env("PATH", child_path_env());
+    for key in SCRUB_ENV {
+        cmd.env_remove(*key);
     }
     cmd.stdin(Stdio::inherit());
     cmd.stdout(Stdio::inherit());
@@ -135,9 +151,37 @@ pub fn run_grok_mode(cfg: &Config, params: GrokModeParams) -> anyhow::Result<Exi
     Ok(exit_code_from_i32(code))
 }
 
+fn child_path_env() -> String {
+    let mut parts: Vec<String> = vec![
+        "/usr/bin".into(),
+        "/bin".into(),
+        "/usr/sbin".into(),
+        "/sbin".into(),
+        "/opt/homebrew/bin".into(),
+        "/usr/local/bin".into(),
+    ];
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            parts.push(dir.display().to_string());
+        }
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        let h = PathBuf::from(home);
+        parts.push(h.join(".local/bin").display().to_string());
+        parts.push(h.join(".grok/bin").display().to_string());
+    }
+    if let Ok(existing) = std::env::var("PATH") {
+        for p in existing.split(':') {
+            if !p.is_empty() && !parts.iter().any(|x| x == p) {
+                parts.push(p.to_owned());
+            }
+        }
+    }
+    parts.join(":")
+}
+
 fn resolve_grok_bin(cfg: &Config) -> String {
     let name = cfg.default_agent.as_str();
-    // Prefer configured default agent when it looks like grok; else grok.
     if name == "grok" || name.ends_with("/grok") {
         name.to_owned()
     } else {
@@ -145,11 +189,19 @@ fn resolve_grok_bin(cfg: &Config) -> String {
     }
 }
 
-fn print_plan(workspace: &Path, data_dir: &str, argv: &[String], note: Option<&str>) {
+fn print_plan(
+    workspace: &Path,
+    data_dir: &str,
+    deny_host: &str,
+    argv: &[String],
+    note: Option<&str>,
+) {
     println!("mode: grok-sandbox");
     println!("workspace: {}", workspace.display());
     println!("DEVCAGE_DATA_DIR={data_dir}");
     println!("DEVCAGE_MODE=grok-sandbox");
+    println!("DEVCAGE_DENY_HOST={deny_host}");
+    println!("scrub_env: {}", SCRUB_ENV.join(","));
     if let Some(n) = note {
         println!("data_dir_note: {n}");
     }
@@ -160,7 +212,6 @@ fn exit_code_from_i32(code: i32) -> ExitCode {
     if code == 0 {
         ExitCode::SUCCESS
     } else if (1..=255).contains(&code) {
-        // ExitCode::from is u8
         ExitCode::from(u8::try_from(code).unwrap_or(1))
     } else {
         ExitCode::FAILURE
@@ -175,6 +226,8 @@ mod tests {
     #[test]
     fn embedded_recipes_nonempty() {
         assert!(EMBEDDED_SANDBOX_TOML.contains("keys-first"));
+        assert!(EMBEDDED_SANDBOX_TOML.contains("extends = \"strict\""));
+        assert!(EMBEDDED_CONFIG_TOML.contains("devcage run -p host"));
         assert!(EMBEDDED_CONFIG_TOML.contains("[permission]"));
     }
 

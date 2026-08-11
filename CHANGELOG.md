@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`devcage grok`** combined mode: seed `.grok` recipes, set `DEVCAGE_DATA_DIR` + `PATH`, launch `grok --sandbox keys-first` (override with `--sandbox` / `DEVCAGE_GROK_SANDBOX`).
 - **`devcage init-grok`**: write embedded sandbox/permission recipes into the project.
 - **`docs/usage.md`**: full Grok operator guide (`devcage grok`, nested deep cage, data-dir fallback, agent vs grok, troubleshooting).
+- **`devcage limits`**: JSON probes for sandbox + nested cage composition.
+- **Hardening:** `keys-first` extends Grok **`strict`** + expanded deny; `devcage grok` scrubs `SSH_AUTH_SOCK`/cloud tokens; stable PATH; `DEVCAGE_DENY_HOST=1` blocks profile `host` (override `--allow-host-profile`).
 
 ### Changed
 

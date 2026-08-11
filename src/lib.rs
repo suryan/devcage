@@ -22,6 +22,7 @@ mod cli;
 mod config;
 mod events;
 mod grok_mode;
+mod limits;
 mod net_policy;
 mod orchestrate;
 mod plan;
@@ -66,6 +67,7 @@ fn init_tracing() {
         .init();
 }
 
+#[allow(clippy::too_many_lines)]
 fn dispatch(cfg: &Config, cli: Cli) -> anyhow::Result<ExitCode> {
     match cli.command {
         Commands::Doctor => {
@@ -92,6 +94,7 @@ fn dispatch(cfg: &Config, cli: Cli) -> anyhow::Result<ExitCode> {
             workspace,
             wipe,
             keep,
+            allow_host_profile,
             command,
         } => orchestrate::run(
             cfg,
@@ -102,6 +105,7 @@ fn dispatch(cfg: &Config, cli: Cli) -> anyhow::Result<ExitCode> {
                 tty: false,
                 wipe_after: wipe,
                 keep,
+                allow_host_profile,
             },
         ),
         Commands::Shell {
@@ -109,7 +113,8 @@ fn dispatch(cfg: &Config, cli: Cli) -> anyhow::Result<ExitCode> {
             workspace,
             wipe,
             keep,
-        } => orchestrate::shell(cfg, profile, workspace, wipe, keep),
+            allow_host_profile,
+        } => orchestrate::shell(cfg, profile, workspace, wipe, keep, allow_host_profile),
         Commands::Stop { session, wipe } => {
             orchestrate::stop(cfg, session, wipe)?;
             Ok(ExitCode::SUCCESS)
@@ -143,53 +148,40 @@ fn dispatch(cfg: &Config, cli: Cli) -> anyhow::Result<ExitCode> {
             orchestrate::clean(cfg, all)?;
             Ok(ExitCode::SUCCESS)
         },
+        Commands::Limits => limits::run_limits(cfg),
         Commands::Grok {
             sandbox,
+            strict,
             no_init,
             force_init,
+            allow_host_profile,
             print,
             workspace,
             args,
-        } => dispatch_grok(cfg, sandbox, no_init, force_init, print, workspace, args),
-        Commands::InitGrok { force, workspace } => dispatch_init_grok(force, workspace),
-    }
-}
-
-fn dispatch_grok(
-    cfg: &Config,
-    sandbox: String,
-    no_init: bool,
-    force_init: bool,
-    print: bool,
-    workspace: Option<std::path::PathBuf>,
-    args: Vec<String>,
-) -> anyhow::Result<ExitCode> {
-    grok_mode::run_grok_mode(
-        cfg,
-        grok_mode::GrokModeParams {
-            sandbox,
-            no_init,
-            force_init,
-            print_only: print,
-            workspace,
-            args,
+        } => grok_mode::run_grok_mode(
+            cfg,
+            grok_mode::GrokModeParams {
+                sandbox: if strict { "strict".to_owned() } else { sandbox },
+                no_init,
+                force_init,
+                allow_host_profile,
+                print_only: print,
+                workspace,
+                args,
+            },
+        ),
+        Commands::InitGrok { force, workspace } => {
+            let ws = config::resolve_workspace(workspace)?;
+            let written = grok_mode::init_grok_recipes(&ws, force)?;
+            if written.is_empty() {
+                println!(
+                    "devcage: .grok recipes already present under {} (use --force to overwrite)",
+                    ws.display()
+                );
+            } else {
+                println!("devcage: wrote {}", written.join(", "));
+            }
+            Ok(ExitCode::SUCCESS)
         },
-    )
-}
-
-fn dispatch_init_grok(
-    force: bool,
-    workspace: Option<std::path::PathBuf>,
-) -> anyhow::Result<ExitCode> {
-    let ws = config::resolve_workspace(workspace)?;
-    let written = grok_mode::init_grok_recipes(&ws, force)?;
-    if written.is_empty() {
-        println!(
-            "devcage: .grok recipes already present under {} (use --force to overwrite)",
-            ws.display()
-        );
-    } else {
-        println!("devcage: wrote {}", written.join(", "));
     }
-    Ok(ExitCode::SUCCESS)
 }

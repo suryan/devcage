@@ -334,6 +334,7 @@ fn push_host_true_check(checks: &mut Vec<serde_json::Value>) -> usize {
 
 /// Parameters for a cage run.
 #[derive(Debug)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct RunParams {
     /// Profile name.
     pub profile: String,
@@ -347,6 +348,22 @@ pub struct RunParams {
     pub wipe_after: bool,
     /// Keep session home even when the profile would wipe.
     pub keep: bool,
+    /// Allow `host` / break-glass even when `DEVCAGE_DENY_HOST=1`.
+    pub allow_host_profile: bool,
+}
+
+fn refuse_denied_host_profile(profile: &str, allow_host: bool) -> anyhow::Result<()> {
+    if allow_host || profile != "host" {
+        return Ok(());
+    }
+    if crate::config::host_profile_denied() {
+        anyhow::bail!(
+            "profile `host` is denied (DEVCAGE_DENY_HOST is set, e.g. under `devcage grok`). \
+             Use `-p offline`, `-p untrusted`, or `-p agent`, or pass `--allow-host-profile` \
+             / set DEVCAGE_DENY_HOST=0 to override"
+        );
+    }
+    Ok(())
 }
 
 /// Execute a command in a profile; returns process exit code.
@@ -360,6 +377,7 @@ pub fn run(cfg: &Config, params: RunParams) -> anyhow::Result<ExitCode> {
     if params.command.is_empty() {
         anyhow::bail!("no command specified; example: devcage run -p offline -- echo hi");
     }
+    refuse_denied_host_profile(policy.name, params.allow_host_profile)?;
     let backend = select_backend(
         policy.backend,
         cfg.container_runtime.as_deref(),
@@ -548,6 +566,7 @@ pub fn agent(
             tty: true,
             wipe_after: offline,
             keep: false,
+            allow_host_profile: false,
         },
     )
 }
@@ -664,6 +683,7 @@ pub fn shell(
     workspace: Option<std::path::PathBuf>,
     wipe: bool,
     keep: bool,
+    allow_host_profile: bool,
 ) -> anyhow::Result<ExitCode> {
     run(
         cfg,
@@ -674,6 +694,7 @@ pub fn shell(
             tty: true,
             wipe_after: wipe,
             keep,
+            allow_host_profile,
         },
     )
 }
@@ -879,6 +900,7 @@ mod tests {
                 tty: false,
                 wipe_after: false,
                 keep: true,
+                allow_host_profile: false,
             },
         )
         .expect("run");
@@ -928,6 +950,7 @@ mod tests {
                 tty: false,
                 wipe_after: true,
                 keep: false,
+                allow_host_profile: false,
             },
         )
         .expect_err("empty allowlist");

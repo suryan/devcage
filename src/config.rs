@@ -96,6 +96,21 @@ fn env_falsy(key: &str) -> bool {
     })
 }
 
+/// True when `host` / break-glass host profile is denied for this process.
+///
+/// Armed when `DEVCAGE_DENY_HOST` is set to a truthy value (default for
+/// `devcage grok` children is `1`). Set `DEVCAGE_DENY_HOST=0` or
+/// `devcage run --allow-host-profile` to override.
+#[must_use]
+pub fn host_profile_denied() -> bool {
+    std::env::var("DEVCAGE_DENY_HOST").is_ok_and(|v| {
+        matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    })
+}
+
 fn default_data_dir() -> PathBuf {
     if let Some(xdg) = std::env::var_os("XDG_DATA_HOME") {
         return PathBuf::from(xdg).join("devcage");
