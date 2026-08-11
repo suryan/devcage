@@ -27,3 +27,6 @@ lcov.info
 # Local cargo home for sandboxed builds
 .cargo-local/
 devcage-bin
+
+.git-home/
+.cargo-local/
