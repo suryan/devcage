@@ -25,7 +25,7 @@ d2 docs/flow.d2 docs/flow.svg
 devcage grok  →  grok --sandbox keys-first + recipes + DevCage-ready env
 
 # Other agents (no native sandbox)
-devcage wrap [--net none] -- <agent>  →  Seatbelt (macOS) + env scrub
+devcage wrap [--net none] -- <agent>  →  Seatbelt (macOS) / bwrap (Linux) + env scrub
 
 # Deep cage (any agent session)
 devcage run  →  profile  →  container|host backend  →  command

@@ -7,9 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-13
+
 ### Added
 
 - **`devcage wrap` on Linux:** `bwrap` argv plan (`src/bwrap_plan.rs`) unit-tested on macOS; used at runtime when `bwrap` is on `PATH` (`--unshare-net` for `--net none`).
+
+### Fixed
+
+- Linux release build: gate unused `seatbelt_enabled` behind `cfg(target_os = "macos")` so `dead_code` does not fail the compile.
+- **`devcage grok` on Linux:** generated `keys-first` no longer sets `restrict_network=true`. Grok's seccomp filter also blocked `connect()` to `/var/run/docker.sock`, so nested `devcage run -p offline` failed inside the combined session. Hard no-network remains the offline/untrusted container.
+- **`keys-first` `.env` deny on Linux:** seed exact `.env` / `local.env` / `.env.local` (plus existing globs) so bind-over covers files created after start. Generated recipes auto-refresh on the next `devcage grok` / `init-grok`.
+- `devcage limits` no longer overwrites or deletes a real project `.env` when probing secret-write deny.
 
 ## [0.6.0] - 2026-08-11
 

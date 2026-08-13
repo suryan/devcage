@@ -17,6 +17,6 @@ devcage init-grok --force
 devcage limits
 ```
 
-Recipes: `keys-first` extends Grok **`strict`**, expanded secret denylist, permission deny for host break-glass.
+Recipes: `keys-first` extends Grok **`strict`**, exact `.env` deny + globs, child network left on (Linux Docker), permission deny for host break-glass.
 
 Full model: [docs/usage.md](../../docs/usage.md) · [recommended-stack.md](../../docs/recommended-stack.md).

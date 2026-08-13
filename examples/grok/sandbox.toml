@@ -6,11 +6,14 @@
 #   devcage init-grok --force
 #
 # Extends Grok `strict` + re-opens only tool paths needed for nested DevCage.
-# Hard no-network on macOS: still use `devcage run -p offline`.
+# restrict_network is OFF: on Linux, Grok seccomp also blocks Docker's unix
+# socket (`connect()` to docker.sock). Hard no-network: `devcage run -p offline`.
+# Exact `.env` / `local.env` / `.env.local` so Linux bind-over covers files
+# created after start. Globs remain for macOS + existing nested files.
 
 [profiles.keys-first]
 extends = "strict"
-restrict_network = true
+restrict_network = false
 
 # Placeholder — real file from `init-grok` lists absolute paths, e.g.:
 #   "/opt/homebrew",
@@ -30,6 +33,9 @@ read_write = [
 ]
 
 deny = [
+  ".env",
+  "local.env",
+  ".env.local",
   "**/.env",
   "**/.env.*",
   "**/local.env",

@@ -82,6 +82,7 @@ pub fn select_backend(
     }
 }
 
+#[cfg(target_os = "macos")]
 fn seatbelt_enabled() -> bool {
     std::env::var("DEVCAGE_SEATBELT").ok().is_some_and(|v| {
         matches!(

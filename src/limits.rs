@@ -88,8 +88,7 @@ fn push_fs_checks(cfg: &Config, out: &mut Vec<Value>) {
     ));
 
     let secret = cwd.join(".env");
-    let secret_write_blocked = fs::write(&secret, b"x").is_err();
-    let _ = fs::remove_file(&secret);
+    let secret_write_blocked = project_secret_write_is_blocked(&secret);
     out.push(check(
         "project_secret_write_blocked",
         secret_write_blocked,
@@ -97,7 +96,7 @@ fn push_fs_checks(cfg: &Config, out: &mut Vec<Value>) {
         if secret_write_blocked {
             ".env write denied (kernel deny active)"
         } else {
-            ".env write allowed — re-seed: devcage init-grok --force"
+            ".env write allowed — Linux needs exact deny of .env; re-seed: devcage init-grok --force"
         },
     ));
 
@@ -303,6 +302,25 @@ fn check(name: &str, ok: bool, critical: bool, detail: impl AsRef<str>) -> Value
     })
 }
 
+/// Probe whether the kernel denies writes to `path` without destroying contents.
+///
+/// If the file is missing and we create it as part of the probe, it is removed.
+/// An existing file is opened without truncation and is never deleted.
+fn project_secret_write_is_blocked(path: &Path) -> bool {
+    let existed = path.exists();
+    fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)
+        .map_or(true, |_file| {
+            if !existed {
+                let _ = fs::remove_file(path);
+            }
+            false
+        })
+}
+
 fn write_probe(dir: &Path) -> bool {
     if fs::create_dir_all(dir).is_err() {
         return false;
@@ -393,7 +411,39 @@ fn host_profile_refused(cfg: &Config) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::write_probe;
+    use super::{project_secret_write_is_blocked, write_probe};
+
+    #[test]
+    fn secret_probe_does_not_clobber_existing_file() {
+        let path = std::env::temp_dir().join(format!(
+            "devcage-limits-env-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::write(&path, b"keep").expect("write");
+        assert!(!project_secret_write_is_blocked(&path));
+        let body = std::fs::read(&path).expect("read");
+        assert_eq!(body, b"keep");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn secret_probe_removes_file_it_created() {
+        let path = std::env::temp_dir().join(format!(
+            "devcage-limits-env-missing-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = std::fs::remove_file(&path);
+        assert!(!project_secret_write_is_blocked(&path));
+        assert!(!path.exists());
+    }
 
     #[test]
     fn write_probe_tmp_ok() {

@@ -4,7 +4,7 @@
 
 DevCage is **not Grok-only**. Grok has the smoothest daily command (`devcage grok`) because it has its own `--sandbox`. Other agents use **`devcage wrap`**. Untrusted/offline/Linux **commands** use **`devcage run`**. Details: [docs/usage.md](docs/usage.md), [docs/recommended-stack.md](docs/recommended-stack.md).
 
-> **Status:** **v0.6** — container + host backends; Grok mode + generic wrap. See the [PRD](docs/product_requirements.md).
+> **Status:** **v0.7** — container + host backends; Grok mode + wrap (Seatbelt / bwrap). See the [PRD](docs/product_requirements.md).
 
 | | |
 |--|--|
@@ -20,7 +20,7 @@ DevCage is **not Grok-only**. Grok has the smoothest daily command (`devcage gro
 # Grok (uses Grok --sandbox + DevCage wiring)
 devcage grok
 
-# Any other agent (DevCage Seatbelt — no agent sandbox required)
+# Any other agent (Seatbelt / bwrap — no agent sandbox required)
 devcage wrap -- claude
 devcage wrap -- cursor-agent
 devcage wrap --net none -- codex
@@ -34,7 +34,7 @@ devcage stop --wipe
 | Piece | Job |
 |------|-----|
 | **`devcage grok`** | Daily Grok: agent `--sandbox` + recipes + safe env |
-| **`devcage wrap`** | Daily *other* agents: DevCage process Seatbelt (macOS) |
+| **`devcage wrap`** | Daily *other* agents: Seatbelt (macOS) or `bwrap` (Linux) |
 | **`devcage run`** | Disposable Linux cage for a **command** |
 | **mcp-secret-launcher** | Keys in Keychain → MCP env only |
 | **mcp-guard** | MCP tool policy / HITL |
@@ -68,7 +68,7 @@ Release install (prefix overridable; default `$HOME/.local`):
 ./scripts/install.sh
 ```
 
-## Product shape (v0.6)
+## Product shape (v0.7)
 
 | In scope | Later |
 |----------|--------|
