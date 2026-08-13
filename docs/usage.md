@@ -456,7 +456,7 @@ devcage session
 | **`devcage grok […]`** | **Combined mode:** Grok `--sandbox` + DevCage-ready env (see above) |
 | **`devcage init-grok`** | Seed `.grok/sandbox.toml` + `config.toml` |
 | **`devcage limits`** | JSON isolation probes (sandbox + nested cage) |
-| **`devcage wrap -- <cmd…>`** | Any agent/command under process wrap (Seatbelt on macOS) |
+| **`devcage wrap -- <cmd…>`** | Any agent under process wrap. Flags: `--net none`, `--print`, `--no-seatbelt`, `--ephemeral-home` |
 | `devcage agent [name] [--offline] [--host-restricted]` | Agent in cage / agent-host |
 | `devcage export <id> <src> <dest>` | Promote artifact from session |
 | `devcage logs <id>` | Session event log (JSON lines) |

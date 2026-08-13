@@ -20,12 +20,15 @@ Instead:
 ```text
 Grok (host) + global skills + built-in tools
     │
-    ├─ Grok --sandbox workspace|strict   (Seatbelt / Landlock)
+    ├─ Grok --sandbox keys-first         (via `devcage grok`)
     ├─ Project permission deny           (Read/Edit/Bash rules)
     ├─ MCP → mcp-guard → secret-launcher → MCP servers   (keys)
     ├─ pkg-guard shims                   (uvx / npx supply chain)
     └─ optional: Bash allowlist includes `devcage run …`
          for truly untrusted / offline / Linux-only work
+
+Other agents (no native sandbox):
+    devcage wrap [--net none] -- claude|cursor-agent|codex
 ```
 
 ## Layer map
@@ -38,6 +41,7 @@ Grok (host) + global skills + built-in tools
 | **mcp-guard** | MCP tool allow/deny, args, HITL | Does not constrain built-in `Edit`/`Bash` |
 | **pkg-guard** | Package install policy on shims | Runtime secret isolation |
 | **DevCage container** | Stronger venue for **commands** you deliberately cage | Not the daily I/O path for every keystroke |
+| **`devcage wrap`** | Process Seatbelt (macOS) around **any** agent; `--net none`; no wholesale `$HOME` read | Not Grok’s `--sandbox`; Linux is env-only until bwrap |
 
 ## Threat model fit
 
@@ -80,6 +84,10 @@ devcage grok --print              # dry-run: show env + command
 devcage init-grok                 # only write .grok/ recipes
 # manual (without the wrapper):
 grok --sandbox keys-first
+
+# Any other agent (no native sandbox):
+devcage wrap -- claude
+devcage wrap --net none -- cursor-agent
 ```
 
 Optional project defaults (committed recipes under [examples/grok/](../examples/grok/)):

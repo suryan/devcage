@@ -22,19 +22,22 @@ d2 docs/flow.d2 docs/flow.svg
 
 ```text
 # Daily (Grok)
-grok --sandbox + permissions + mcp-guard + secret-launcher + pkg-guard
+devcage grok  →  grok --sandbox keys-first + recipes + DevCage-ready env
 
-# Deep cage (DevCage)
-devcage run|agent  →  profile  →  container|host backend  →  command
-                         ↑
-              project RW + ephemeral home + secret denylist
+# Other agents (no native sandbox)
+devcage wrap [--net none] -- <agent>  →  Seatbelt (macOS) + env scrub
+
+# Deep cage (any agent session)
+devcage run  →  profile  →  container|host backend  →  command
+                    ↑
+         project RW + ephemeral home + secret denylist
 ```
 
 ## Overview
 
 | Piece | Role |
 |-------|------|
-| **CLI** | **`agent`** (happy path), `run`, `shell`, `stop`, `status`, `doctor`, `profile` |
+| **CLI** | **`grok`** (daily Grok), **`wrap`** (any agent), `run`, `shell`, `agent`, `limits`, `stop`, `doctor` |
 | **Profile** | Fixed core set first: `agent`, `offline`, `host` |
 | **Session** | id, workspace, ephemeral home, stop / wipe |
 | **Backend** | MVP: **container** only |
@@ -44,10 +47,14 @@ devcage run|agent  →  profile  →  container|host backend  →  command
 
 ```text
 Grok (host, built-in tools)
-  ├─ --sandbox / permission rules     (process containment)
+  ├─ devcage grok → --sandbox / permission rules
   ├─ MCP → mcp-guard → secret-launcher → MCP servers
   ├─ PATH: pkg-guard shims (uvx/npx)
-  └─ optional: devcage run|agent      (deep container venue)
+  └─ optional: devcage run            (deep container venue)
+
+Other agents
+  └─ devcage wrap [--net none] -- <cli>
+       └─ optional: devcage run
 ```
 
 None of these replace each other. Details: [recommended-stack.md](./recommended-stack.md).
