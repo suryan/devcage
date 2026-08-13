@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **One-line install:** `curl -fsSL https://raw.githubusercontent.com/suryan/devcage/main/scripts/install.sh | bash -s -- --yes` clones, builds, and installs to `$HOME/.local/bin`. From a checkout, `./scripts/install.sh` still builds that tree. Flags: `--yes`, `--ref`, `--prefix`, `--local`, `--no-keep-src`. Rustup is bootstrapped when `cargo` is missing.
+
 ## [0.7.0] - 2026-08-13
 
 ### Added

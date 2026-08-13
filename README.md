@@ -62,7 +62,14 @@ Quality gate (required before commit):
 ./scripts/check.sh
 ```
 
-Release install (prefix overridable; default `$HOME/.local`):
+Install (one-liner, builds from source into `$HOME/.local/bin`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/suryan/devcage/main/scripts/install.sh \
+  | bash -s -- --yes
+```
+
+From a clone (prefix overridable; default `$HOME/.local`):
 
 ```bash
 ./scripts/install.sh

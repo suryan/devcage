@@ -15,6 +15,22 @@
 
 ## Install (from source)
 
+One-liner (clones `main`, bootstraps rustup if needed, installs to `$HOME/.local/bin`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/suryan/devcage/main/scripts/install.sh \
+  | bash -s -- --yes
+```
+
+Pin a ref / prefix:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/suryan/devcage/main/scripts/install.sh \
+  | bash -s -- --yes --ref main --prefix "$HOME/.local"
+```
+
+From a local clone:
+
 ```bash
 cp local.env.example local.env   # optional
 ./scripts/setup-hooks.sh
@@ -73,7 +89,7 @@ Each step has a purpose — do not skip install if you care about nested Docker.
 
 | Step | Command | What it means |
 |------|---------|----------------|
-| **1. Build / install `devcage`** | `./scripts/build.sh --release` then `./scripts/install.sh` (or `cp target/release/devcage ~/.local/bin/`) | Puts `devcage` on your PATH so both you and nested Grok shells can run it |
+| **1. Build / install `devcage`** | `curl …/install.sh \| bash -s -- --yes` or `./scripts/install.sh` | Puts `devcage` on your PATH so both you and nested Grok shells can run it |
 | **2. Ensure Grok is installed** | `which grok` | Combined mode launches **host** Grok, not a container image |
 | **3. Container runtime (for deep cage)** | Colima/Docker or Podman; `devcage doctor` | Without this, `run -p offline` cannot start a Linux cage |
 | **4. Pull image (optional but useful)** | `devcage pull` | Downloads Alpine (default) so first offline run is faster |
