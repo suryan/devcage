@@ -100,11 +100,11 @@ Closed decisions: [docs/architecture.md](docs/architecture.md#design-decisions-c
 | Doc | Contents |
 |-----|----------|
 | [AGENTS.md](AGENTS.md) | **Project rules** — quality gate, commit habit, changelog |
-| [docs/recommended-stack.md](docs/recommended-stack.md) | **Daily Grok model** — sandbox + keys stack; DevCage optional |
+| [docs/recommended-stack.md](docs/recommended-stack.md) | Daily Grok + **wrap** for other agents; keys stack |
 | [docs/development.md](docs/development.md) | Build, lint, coverage, pre-commit, releases |
 | [docs/product_requirements.md](docs/product_requirements.md) | Goals, FR/NFR, agent wedge, MVP |
 | [docs/architecture.md](docs/architecture.md) | Design + closed decisions |
-| [docs/usage.md](docs/usage.md) | **CLI + Grok guide** — step-by-step with *what each step means* |
+| [docs/usage.md](docs/usage.md) | **CLI + Grok + wrap** — what each step means |
 | [CHANGELOG.md](CHANGELOG.md) | Keep-a-Changelog history |
 | [docs/agent-images.md](docs/agent-images.md) | Container images + host-restricted agents |
 | [examples/grok/](examples/grok/) | Copy-paste Grok sandbox + permission recipes |
