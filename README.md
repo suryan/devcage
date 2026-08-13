@@ -121,4 +121,4 @@ Closed decisions: [docs/architecture.md](docs/architecture.md#design-decisions-c
 
 ## License
 
-MIT (see `Cargo.toml`).
+[MIT](LICENSE) — see `LICENSE` and `license = "MIT"` in `Cargo.toml`.
