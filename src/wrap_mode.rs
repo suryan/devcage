@@ -39,6 +39,8 @@ pub struct WrapParams {
     pub no_seatbelt: bool,
     /// Remap `HOME` to an ephemeral session home (stricter; may break agent auth).
     pub ephemeral_home: bool,
+    /// Deny process network in Seatbelt / bwrap (`--net none`).
+    pub net_none: bool,
     /// Command argv (must be non-empty).
     pub command: Vec<String>,
 }
@@ -74,6 +76,7 @@ pub fn run_wrap(_cfg: &Config, params: WrapParams) -> anyhow::Result<ExitCode> {
             deny_host,
             isolation,
             params.ephemeral_home,
+            params.net_none,
             &params.command,
             data_note.as_deref(),
         );
@@ -105,6 +108,7 @@ pub fn run_wrap(_cfg: &Config, params: WrapParams) -> anyhow::Result<ExitCode> {
             &workspace,
             &data_dir,
             &eph_home,
+            params.net_none,
         )?)
     } else {
         None
@@ -119,6 +123,7 @@ pub fn run_wrap(_cfg: &Config, params: WrapParams) -> anyhow::Result<ExitCode> {
         deny_host,
         isolation,
         params.ephemeral_home,
+        params.net_none,
         &eph_home,
     );
 
@@ -172,6 +177,14 @@ fn print_banner(
     eprintln!("  workspace: {}", workspace.display());
     eprintln!("  data_dir:  {data_dir}");
     eprintln!("  isolation: {isolation}");
+    eprintln!(
+        "  network:   {}",
+        if params.net_none {
+            "none (Seatbelt/bwrap deny)"
+        } else {
+            "allowed (use --net none to block)"
+        }
+    );
     eprintln!("  deny_host: {deny_host}");
     eprintln!("  scrub:     SSH_AUTH_SOCK, AWS_* secrets, GH/OpenAI/Anthropic tokens");
     if params.ephemeral_home {
@@ -216,6 +229,7 @@ fn build_command(seatbelt_profile: Option<&Path>, prog: &str, rest: &[String]) -
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_wrap_env(
     cmd: &mut Command,
     workspace: &Path,
@@ -223,6 +237,7 @@ fn apply_wrap_env(
     deny_host: &str,
     isolation: &str,
     ephemeral_home: bool,
+    net_none: bool,
     eph_home: &Path,
 ) {
     cmd.current_dir(workspace);
@@ -230,6 +245,10 @@ fn apply_wrap_env(
     cmd.env("DEVCAGE_MODE", "wrap");
     cmd.env("DEVCAGE_DENY_HOST", deny_host);
     cmd.env("DEVCAGE_ISOLATION", isolation);
+    cmd.env(
+        "DEVCAGE_WRAP_NET",
+        if net_none { "none" } else { "allowed" },
+    );
     cmd.env("DEVCAGE_WORKSPACE", workspace.display().to_string());
     cmd.env("PATH", child_path_env());
     if ephemeral_home {
@@ -259,12 +278,13 @@ fn already_under_os_sandbox() -> bool {
     ) || std::env::var_os("APP_SANDBOX_CONTAINER_ID").is_some()
 }
 
-/// Seatbelt profile for wrap: project + tmp + `data_dir` writable; system/tools readable.
+/// Seatbelt profile for wrap: project + tmp + `data_dir` writable; **no wholesale `$HOME` read**.
 pub fn write_wrap_seatbelt_profile(
     session_id: &str,
     workspace: &Path,
     data_dir: &Path,
     eph_home: &Path,
+    net_none: bool,
 ) -> anyhow::Result<PathBuf> {
     let dir = std::env::temp_dir().join("devcage-seatbelt");
     fs::create_dir_all(&dir)?;
@@ -306,33 +326,23 @@ pub fn write_wrap_seatbelt_profile(
 
     if let Some(home) = std::env::var_os("HOME") {
         let h = PathBuf::from(home);
-        read_subs.push(h.display().to_string());
+        // Tooling / agent state only — never the whole home (other repos, Desktop, Documents).
         for rel in [
             ".local/bin",
             ".grok",
             ".claude",
             ".cursor",
             ".codex",
-            ".config",
-            ".cache",
             ".colima",
             ".docker",
             ".cargo",
             ".rustup",
         ] {
-            let p = h.join(rel);
-            if p.is_dir() || !p.exists() {
-                let s = p.display().to_string();
-                if !read_subs.contains(&s) {
-                    read_subs.push(s.clone());
-                }
-                if matches!(
-                    rel,
-                    ".grok" | ".claude" | ".cursor" | ".codex" | ".cache" | ".config"
-                ) {
-                    write_subs.push(s);
-                }
-            }
+            push_home_dir(&mut read_subs, &h, rel);
+        }
+        // Writes: named agent dirs only (not all of ~/.config or ~/.cache).
+        for rel in [".grok", ".claude", ".cursor", ".codex"] {
+            push_home_dir(&mut write_subs, &h, rel);
         }
     }
 
@@ -346,6 +356,11 @@ pub fn write_wrap_seatbelt_profile(
         .map(|p| format!("  (subpath \"{}\")", escape_sb(p)))
         .collect::<Vec<_>>()
         .join("\n");
+    let net_line = if net_none {
+        "; network denied (--net none)\n"
+    } else {
+        "(allow network*)\n"
+    };
 
     let body = format!(
         "(version 1)\n\
@@ -355,7 +370,7 @@ pub fn write_wrap_seatbelt_profile(
          (allow sysctl-read)\n\
          (allow mach*)\n\
          (allow ipc-posix*)\n\
-         (allow network*)\n\
+         {net_line}\
          (allow file-read-metadata)\n\
          (allow file-read*\n\
          {read_rules}\n\
@@ -366,6 +381,17 @@ pub fn write_wrap_seatbelt_profile(
     );
     fs::write(&path, body)?;
     Ok(path)
+}
+
+fn push_home_dir(out: &mut Vec<String>, home: &Path, rel: &str) {
+    let p = home.join(rel);
+    if p.exists() && !p.is_dir() {
+        return;
+    }
+    let s = p.display().to_string();
+    if !out.contains(&s) {
+        out.push(s);
+    }
 }
 
 fn escape_sb(s: &str) -> String {
@@ -402,12 +428,14 @@ fn child_path_env() -> String {
     parts.join(":")
 }
 
+#[allow(clippy::too_many_arguments)]
 fn print_plan(
     workspace: &Path,
     data_dir: &str,
     deny_host: &str,
     isolation: &str,
     ephemeral_home: bool,
+    net_none: bool,
     command: &[String],
     note: Option<&str>,
 ) {
@@ -417,6 +445,8 @@ fn print_plan(
     println!("DEVCAGE_MODE=wrap");
     println!("DEVCAGE_DENY_HOST={deny_host}");
     println!("isolation: {isolation}");
+    println!("net: {}", if net_none { "none" } else { "allowed" });
+    println!("home_read: named-agent-and-tool-dirs (not wholesale $HOME)");
     println!("ephemeral_home: {ephemeral_home}");
     println!("scrub_env: {}", SCRUB_ENV.join(","));
     if let Some(n) = note {
@@ -448,12 +478,30 @@ mod tests {
             Path::new("/tmp/ws-wrap"),
             Path::new("/tmp/data-wrap"),
             Path::new("/tmp/home-wrap"),
+            false,
         )
         .expect("write");
         let s = fs::read_to_string(&p).expect("read");
         assert!(s.contains("/tmp/ws-wrap"));
         assert!(s.contains("/tmp/data-wrap"));
         assert!(s.contains("deny default"));
+        assert!(s.contains("allow network*"));
+        let _ = fs::remove_file(p);
+    }
+
+    #[test]
+    fn wrap_profile_net_none_omits_network() {
+        let p = write_wrap_seatbelt_profile(
+            "wrap-netnone",
+            Path::new("/tmp/ws-wrap"),
+            Path::new("/tmp/data-wrap"),
+            Path::new("/tmp/home-wrap"),
+            true,
+        )
+        .expect("write");
+        let s = fs::read_to_string(&p).expect("read");
+        assert!(s.contains("network denied"));
+        assert!(!s.contains("allow network*"));
         let _ = fs::remove_file(p);
     }
 }

@@ -189,6 +189,7 @@ fn dispatch(cfg: &Config, cli: Cli) -> anyhow::Result<ExitCode> {
             allow_host_profile,
             no_seatbelt,
             ephemeral_home,
+            net,
             workspace,
             command,
         } => wrap_mode::run_wrap(
@@ -199,6 +200,7 @@ fn dispatch(cfg: &Config, cli: Cli) -> anyhow::Result<ExitCode> {
                 allow_host_profile,
                 no_seatbelt,
                 ephemeral_home,
+                net_none: net.eq_ignore_ascii_case("none"),
                 command,
             },
         ),

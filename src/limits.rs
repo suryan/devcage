@@ -19,6 +19,7 @@ pub fn run_limits(cfg: &Config) -> anyhow::Result<ExitCode> {
     let mut checks = Vec::new();
     push_fs_checks(cfg, &mut checks);
     push_env_mode_checks(&mut checks);
+    push_wrap_checks(cfg, &mut checks);
     push_container_checks(cfg, &mut checks);
 
     let critical_failed = checks.iter().any(|c| {
@@ -36,9 +37,10 @@ pub fn run_limits(cfg: &Config) -> anyhow::Result<ExitCode> {
         "checks": checks,
         "pass": !critical_failed,
         "notes": [
-            "On macOS, Grok sandbox often cannot block host outbound HTTPS; use offline profile for no-net jobs.",
-            "Keychain API may still be reachable from the host Grok process; use mcp-secret-launcher + mcp-guard.",
+            "On macOS, Grok sandbox often cannot block host outbound HTTPS; use offline profile or wrap --net none.",
+            "Keychain API may still be reachable from the host process; use mcp-secret-launcher + mcp-guard.",
             "Re-seed recipes after upgrades: devcage init-grok --force",
+            "devcage wrap: Seatbelt without wholesale $HOME read; --net none denies process network.",
         ],
     });
     println!("{}", serde_json::to_string_pretty(&report)?);
@@ -146,22 +148,23 @@ fn push_env_mode_checks(out: &mut Vec<Value>) {
         },
     ));
 
-    let sock_scrubbed = mode != "grok-sandbox" || std::env::var_os("SSH_AUTH_SOCK").is_none();
+    let sock_expected = mode == "grok-sandbox" || mode == "wrap";
+    let sock_scrubbed = !sock_expected || std::env::var_os("SSH_AUTH_SOCK").is_none();
     out.push(check(
-        "ssh_auth_sock_scrubbed_in_grok_mode",
+        "ssh_auth_sock_scrubbed_in_isolated_mode",
         sock_scrubbed,
         false,
-        if mode != "grok-sandbox" {
-            "not in DEVCAGE_MODE=grok-sandbox"
+        if !sock_expected {
+            "not in grok-sandbox/wrap mode"
         } else if sock_scrubbed {
             "SSH_AUTH_SOCK unset"
         } else {
-            "SSH_AUTH_SOCK still set — restart with latest devcage grok"
+            "SSH_AUTH_SOCK still set — restart with latest devcage grok|wrap"
         },
     ));
 
     let deny = host_profile_denied();
-    let deny_ok = mode != "grok-sandbox" || deny;
+    let deny_ok = (mode != "grok-sandbox" && mode != "wrap") || deny;
     out.push(check(
         "deny_host_profile_armed",
         deny_ok,
@@ -171,6 +174,73 @@ fn push_env_mode_checks(out: &mut Vec<Value>) {
             std::env::var("DEVCAGE_DENY_HOST").ok()
         ),
     ));
+}
+
+fn push_wrap_checks(_cfg: &Config, out: &mut Vec<Value>) {
+    let Ok(bin) = std::env::current_exe() else {
+        out.push(check(
+            "wrap_print",
+            false,
+            false,
+            "cannot resolve current exe",
+        ));
+        return;
+    };
+    let output = Command::new(&bin)
+        .args(["wrap", "--print", "--", "/usr/bin/true"])
+        .output();
+    match output {
+        Ok(o) if o.status.success() => {
+            let s = String::from_utf8_lossy(&o.stdout);
+            let ok = s.contains("mode: wrap") && s.contains("home_read:");
+            out.push(check(
+                "wrap_print",
+                ok,
+                false,
+                if ok {
+                    "wrap --print reports mode + home_read policy"
+                } else {
+                    "wrap --print missing expected fields"
+                },
+            ));
+            let net_none = Command::new(&bin)
+                .args(["wrap", "--print", "--net", "none", "--", "/usr/bin/true"])
+                .output();
+            let net_ok = net_none
+                .ok()
+                .filter(|o| o.status.success())
+                .is_some_and(|o| String::from_utf8_lossy(&o.stdout).contains("net: none"));
+            out.push(check(
+                "wrap_net_none_print",
+                net_ok,
+                false,
+                if net_ok {
+                    "wrap --net none advertised"
+                } else {
+                    "wrap --net none print failed"
+                },
+            ));
+        },
+        Ok(o) => {
+            out.push(check(
+                "wrap_print",
+                false,
+                false,
+                format!(
+                    "wrap --print failed: {}",
+                    String::from_utf8_lossy(&o.stderr)
+                ),
+            ));
+        },
+        Err(e) => {
+            out.push(check(
+                "wrap_print",
+                false,
+                false,
+                format!("wrap --print spawn error: {e}"),
+            ));
+        },
+    }
 }
 
 fn push_container_checks(cfg: &Config, out: &mut Vec<Value>) {

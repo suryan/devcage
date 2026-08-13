@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-11
+
 ### Added
 
 - **`auth_seed`**: copy `~/.grok/auth.json` (+ config) into ephemeral HOME for `agent-host` so Grok can authenticate without re-login.
@@ -19,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`devcage limits`**: JSON probes for sandbox + nested cage composition.
 - **Hardening:** `keys-first` extends Grok **`strict`** + expanded deny; `devcage grok` scrubs `SSH_AUTH_SOCK`/cloud tokens; stable PATH; `DEVCAGE_DENY_HOST=1` blocks profile `host` (override `--allow-host-profile`).
 - **`devcage wrap`**: run **any** agent/command under DevCage process isolation (macOS Seatbelt + env scrub + nested deep-cage wiring); no agent-native sandbox required.
+- **`wrap --net none`**: Seatbelt denies process network.
+- **Tighter wrap FS**: no wholesale `$HOME` read; named agent/tool directories only.
+- **`devcage limits`**: wrap `--print` / `--net none` probes.
 
 ### Changed
 

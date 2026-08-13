@@ -240,6 +240,7 @@ fn wrap_print_and_true() {
     let stdout = String::from_utf8_lossy(&print.stdout);
     assert!(stdout.contains("mode: wrap"), "stdout={stdout}");
     assert!(stdout.contains("DEVCAGE_MODE=wrap"), "stdout={stdout}");
+    assert!(stdout.contains("home_read:"), "stdout={stdout}");
 
     let run = bin()
         .args(["wrap", "--", "/usr/bin/true"])

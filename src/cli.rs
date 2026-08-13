@@ -210,6 +210,9 @@ pub enum Commands {
         /// Remap HOME to ephemeral session home (may break agent login/skills).
         #[arg(long)]
         ephemeral_home: bool,
+        /// Process network: `allowed` (default) or `none` (Seatbelt deny; macOS).
+        #[arg(long, default_value = "allowed")]
+        net: String,
         /// Project workspace (default: cwd or git root).
         #[arg(long, short = 'w', env = "DEVCAGE_WORKSPACE")]
         workspace: Option<PathBuf>,

@@ -325,6 +325,7 @@ devcage wrap -- claude
 devcage wrap -- cursor-agent
 devcage wrap -- codex
 devcage wrap --print -- /usr/bin/true    # dry-run
+devcage wrap --net none -- claude        # Seatbelt denies process network (macOS)
 devcage wrap --no-seatbelt -- my-agent   # env wiring only
 devcage wrap --ephemeral-home -- claude  # remap HOME (may break login)
 ```
@@ -333,7 +334,7 @@ devcage wrap --ephemeral-home -- claude  # remap HOME (may break login)
 
 | Piece | Meaning |
 |-------|---------|
-| **macOS Seatbelt** | Runs the command under `sandbox-exec` with a DevCage-generated profile (project + tmp + data_dir + common agent dirs writable; system/tools readable). **No agent cooperation required.** |
+| **macOS Seatbelt** | `sandbox-exec` around the process. **Reads:** system + project + named tool/agent dirs (`~/.claude`, `~/.cursor`, `~/.grok`, Homebrew, …) — **not the whole home**. **Writes:** project, tmp, data_dir, those agent dirs. **`--net none`** omits `allow network*`. |
 | **Env scrub** | Same ambient scrub as `devcage grok` (`SSH_AUTH_SOCK`, AWS secrets, GH/OpenAI/Anthropic tokens) |
 | **`DEVCAGE_DATA_DIR`** | Sandbox-safe path for nested `devcage run` |
 | **`DEVCAGE_DENY_HOST=1`** | Nested break-glass `host` profile blocked by default |
