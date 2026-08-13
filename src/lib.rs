@@ -18,6 +18,7 @@
 mod auth_seed;
 mod backend;
 mod banner;
+mod bwrap_plan;
 mod cli;
 mod config;
 mod events;

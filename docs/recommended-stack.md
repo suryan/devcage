@@ -41,7 +41,7 @@ Other agents (no native sandbox):
 | **mcp-guard** | MCP tool allow/deny, args, HITL | Does not constrain built-in `Edit`/`Bash` |
 | **pkg-guard** | Package install policy on shims | Runtime secret isolation |
 | **DevCage container** | Stronger venue for **commands** you deliberately cage | Not the daily I/O path for every keystroke |
-| **`devcage wrap`** | Process Seatbelt (macOS) around **any** agent; `--net none`; no wholesale `$HOME` read | Not Grok’s `--sandbox`; Linux is env-only until bwrap |
+| **`devcage wrap`** | Process Seatbelt (macOS) or **bwrap** (Linux) around **any** agent; `--net none`; no wholesale `$HOME` read | Not Grok’s `--sandbox`; env-only if neither tool is present |
 
 ## Threat model fit
 

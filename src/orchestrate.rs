@@ -110,7 +110,12 @@ pub fn doctor(cfg: &Config) -> anyhow::Result<()> {
                 "image": cfg.container_image,
             },
             "host": { "mvp": true, "break_glass": true },
-            "bwrap": { "mvp": false, "planned": true, "available": which("bwrap") },
+            "bwrap": {
+                "mvp": true,
+                "wrap_backend": true,
+                "available": which("bwrap"),
+                "note": "Used by `devcage wrap` on Linux when on PATH; argv builder is tested on all platforms",
+            },
         },
         "data_dir": cfg.data_dir,
         "data_dir_note": cfg.data_dir_note,

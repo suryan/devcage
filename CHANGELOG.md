@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`devcage wrap` on Linux:** `bwrap` argv plan (`src/bwrap_plan.rs`) unit-tested on macOS; used at runtime when `bwrap` is on `PATH` (`--unshare-net` for `--net none`).
+
 ## [0.6.0] - 2026-08-11
 
 ### Added

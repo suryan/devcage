@@ -339,7 +339,7 @@ devcage wrap --ephemeral-home -- claude  # remap HOME (may break login)
 | **`DEVCAGE_DATA_DIR`** | Sandbox-safe path for nested `devcage run` |
 | **`DEVCAGE_DENY_HOST=1`** | Nested break-glass `host` profile blocked by default |
 | **Real `HOME` (default)** | Agent auth/skills keep working; optional `--ephemeral-home` for stricter (often breaks OAuth) |
-| **Linux** | Seatbelt N/A yet → env-only wrap + warning (bwrap planned) |
+| **Linux** | Uses **`bwrap`** when on `PATH` (same binds: project/data/agent dirs; `--unshare-net` if `--net none`). If `bwrap` is missing → env-only + warning |
 
 **`devcage grok` vs `devcage wrap`:**
 
@@ -364,7 +364,7 @@ devcage run -p offline -- ./sketchy.sh
 | **Grok inside Alpine daily** | Skills/auth break; use host Grok + sandbox instead |
 | **MCP as replacement for all built-ins** | Model ignores dual APIs; contain the process instead |
 | **Full Keychain lockout via sandbox alone** | Keep mcp-secret-launcher + mcp-guard |
-| **Linux process Seatbelt** | Wrap is env-only on non-macOS until bwrap lands |
+| **Linux wrap without `bwrap`** | Env-only; install bubblewrap for real namespaces |
 
 ---
 

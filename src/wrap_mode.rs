@@ -8,6 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
+use crate::bwrap_plan::{bwrap_argv, BwrapPlan};
 use crate::config::{data_dir_for_grok_sandbox_child, resolve_workspace, Config};
 use crate::util::which;
 
@@ -67,7 +68,8 @@ pub fn run_wrap(_cfg: &Config, params: WrapParams) -> anyhow::Result<ExitCode> {
 
     let nested = already_under_os_sandbox();
     let use_seatbelt = !params.no_seatbelt && seatbelt_available() && !nested;
-    let isolation = isolation_label(use_seatbelt, params.no_seatbelt, nested);
+    let use_bwrap = !params.no_seatbelt && !use_seatbelt && !nested && bwrap_available();
+    let isolation = isolation_label(use_seatbelt, use_bwrap, params.no_seatbelt, nested);
 
     if params.print_only {
         print_plan(
@@ -115,7 +117,17 @@ pub fn run_wrap(_cfg: &Config, params: WrapParams) -> anyhow::Result<ExitCode> {
     };
 
     let rest = params.command.get(1..).unwrap_or(&[]);
-    let mut cmd = build_command(seatbelt_profile_path.as_deref(), &prog, rest);
+    let mut cmd = if use_bwrap {
+        build_bwrap_command(
+            &workspace,
+            &data_dir,
+            params.ephemeral_home.then_some(eph_home.as_path()),
+            params.net_none,
+            &params.command,
+        )?
+    } else {
+        build_command(seatbelt_profile_path.as_deref(), &prog, rest)
+    };
     apply_wrap_env(
         &mut cmd,
         &workspace,
@@ -148,15 +160,23 @@ fn new_session_id() -> String {
     )
 }
 
-const fn isolation_label(use_seatbelt: bool, no_seatbelt: bool, nested: bool) -> &'static str {
+#[allow(clippy::fn_params_excessive_bools)]
+const fn isolation_label(
+    use_seatbelt: bool,
+    use_bwrap: bool,
+    no_seatbelt: bool,
+    nested: bool,
+) -> &'static str {
     if use_seatbelt {
         "seatbelt"
+    } else if use_bwrap {
+        "bwrap"
     } else if no_seatbelt {
         "env-only"
     } else if nested {
         "env-only-nested"
     } else {
-        "env-only-no-seatbelt"
+        "env-only-no-os-sandbox"
     }
 }
 
@@ -196,14 +216,14 @@ fn print_banner(
         eprintln!(
             "  warning:   already under an OS sandbox (e.g. devcage grok); Seatbelt wrap skipped"
         );
+    } else if isolation == "bwrap" {
+        // Linux bubblewrap — no extra warning.
     } else if !use_seatbelt && cfg!(target_os = "macos") && !params.no_seatbelt {
         eprintln!("  warning:   sandbox-exec not found; env-only wrap");
-    } else if !cfg!(target_os = "macos") && !params.no_seatbelt && !nested {
-        eprintln!(
-            "  warning:   Seatbelt is macOS-only; Linux bwrap wrap is not enabled yet (env-only)"
-        );
+    } else if !params.no_seatbelt && !nested {
+        eprintln!("  warning:   no bwrap/sandbox-exec on PATH; env-only wrap");
     } else {
-        // Seatbelt active or user requested env-only: no extra warning.
+        // OS sandbox active or user requested env-only: no extra warning.
     }
     if let Some(note) = data_note {
         eprintln!("  note:      {note}");
@@ -268,6 +288,32 @@ fn apply_wrap_env(
 
 fn seatbelt_available() -> bool {
     cfg!(target_os = "macos") && which("sandbox-exec")
+}
+
+fn bwrap_available() -> bool {
+    which("bwrap")
+}
+
+fn build_bwrap_command(
+    workspace: &Path,
+    data_dir: &Path,
+    ephemeral_home: Option<&Path>,
+    net_none: bool,
+    command: &[String],
+) -> anyhow::Result<Command> {
+    let argv = bwrap_argv(&BwrapPlan {
+        workspace: workspace.to_path_buf(),
+        data_dir: data_dir.to_path_buf(),
+        ephemeral_home: ephemeral_home.map(Path::to_path_buf),
+        net_none,
+        command: command.to_vec(),
+    })?;
+    let Some((prog, rest)) = argv.split_first() else {
+        anyhow::bail!("empty bwrap argv");
+    };
+    let mut c = Command::new(prog);
+    c.args(rest);
+    Ok(c)
 }
 
 /// True when nesting `sandbox-exec` would fail (already under Grok/DevCage Seatbelt).

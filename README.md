@@ -72,7 +72,7 @@ Release install (prefix overridable; default `$HOME/.local`):
 
 | In scope | Later |
 |----------|--------|
-| **`devcage grok`** + **`devcage wrap`** | Linux bwrap wrap |
+| **`devcage grok`** + **`devcage wrap`** (Seatbelt / bwrap) | VM |
 | Profiles: `agent`, `offline`, `untrusted`, `host`, … | GUI / mobile special profiles |
 | Container backend (Docker/Podman) + macOS Seatbelt wrap | VM |
 | Project RW + ephemeral home + secret denylist | COW workspace, durable cages |
