@@ -1,42 +1,44 @@
 # DevCage
 
-**Optional deep cage for untrusted / offline / Linux commands** — not a replacement for Grok’s built-in tools or your MCP/key stack.
+**Process wrap + disposable cages for AI agents** — Grok, Claude, Cursor, Codex, or any CLI. Not a replacement for your MCP/key stack.
 
-> **Recommended daily model (Grok):** keep built-ins; contain the **process** with Grok `--sandbox` + permissions; keep keys via **mcp-secret-launcher** + **mcp-guard**; packages via **pkg-guard**. Use DevCage when you need a disposable container venue. See [docs/recommended-stack.md](docs/recommended-stack.md).
+DevCage is **not Grok-only**. Grok has the smoothest daily command (`devcage grok`) because it has its own `--sandbox`. Other agents use **`devcage wrap`**. Untrusted/offline/Linux **commands** use **`devcage run`**. Details: [docs/usage.md](docs/usage.md), [docs/recommended-stack.md](docs/recommended-stack.md).
 
-> **Status:** **MVP** — container + host backends. See the [PRD](docs/product_requirements.md).
+> **Status:** **v0.6** — container + host backends; Grok mode + generic wrap. See the [PRD](docs/product_requirements.md).
 
 | | |
 |--|--|
 | **Product** | DevCage |
 | **CLI** | `devcage` |
 | **Language** | Rust |
-| **Daily path** | Grok sandbox + your secret/MCP/package tools |
-| **DevCage role** | Explicit caged `run` / `agent` when host sandbox is not enough |
+| **Agents** | **Any** CLI — Grok (first-class), others via `wrap` |
+| **Deep cage** | `run -p offline\|untrusted\|agent` (container) |
 
 ## Pitch
 
 ```text
-# Daily Grok (uses Grok's own --sandbox + DevCage wiring):
+# Grok (uses Grok --sandbox + DevCage wiring)
 devcage grok
 
-# Any other agent (DevCage applies Seatbelt — agent needs no sandbox mode):
+# Any other agent (DevCage Seatbelt — no agent sandbox required)
 devcage wrap -- claude
 devcage wrap -- cursor-agent
+devcage wrap --net none -- codex
 
-# Deep cage when needed:
+# Deep cage for a command (any agent / any shell)
 devcage run -p offline -- ./sketchy.sh
 devcage run -p untrusted -- sh
 devcage stop --wipe
 ```
 
-| Tool | Job |
+| Piece | Job |
 |------|-----|
-| **Grok sandbox + permissions** | Limit what built-in tools can touch |
+| **`devcage grok`** | Daily Grok: agent `--sandbox` + recipes + safe env |
+| **`devcage wrap`** | Daily *other* agents: DevCage process Seatbelt (macOS) |
+| **`devcage run`** | Disposable Linux cage for a **command** |
 | **mcp-secret-launcher** | Keys in Keychain → MCP env only |
 | **mcp-guard** | MCP tool policy / HITL |
 | **pkg-guard** | `uvx` / `npx` supply chain |
-| **DevCage** | Where a **command** runs (container/offline/untrusted) |
 
 ## Quick start
 
@@ -66,15 +68,15 @@ Release install (prefix overridable; default `$HOME/.local`):
 ./scripts/install.sh
 ```
 
-## Product shape (v0.1 focus)
+## Product shape (v0.6)
 
-| In scope | Out of v0.1 (roadmap only) |
-|----------|----------------------------|
-| Profiles: **`agent`**, **`offline`**, **`host`** | GUI / mobile special profiles |
-| Happy path: **`devcage agent`** | Custom profile DSL, multi-backend |
-| Container backend (Docker/Podman) | bwrap, VM, native-mac |
+| In scope | Later |
+|----------|--------|
+| **`devcage grok`** + **`devcage wrap`** | Linux bwrap wrap |
+| Profiles: `agent`, `offline`, `untrusted`, `host`, … | GUI / mobile special profiles |
+| Container backend (Docker/Podman) + macOS Seatbelt wrap | VM |
 | Project RW + ephemeral home + secret denylist | COW workspace, durable cages |
-| Net: **none** (`offline`) or **full container** (`agent`) — labeled honestly | Domain allowlist / categories |
+| Net: container `none`/`full`; wrap `--net none` | Kernel allowlist |
 | Optional RO host package caches | pkg-guard required integration |
 
 Closed decisions: [docs/architecture.md](docs/architecture.md#design-decisions-closed).

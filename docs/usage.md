@@ -1,7 +1,7 @@
 # Usage
 
 **Status:** MVP runtime — container profiles need Docker/Podman; host profiles always work.
-**Primary agent:** **Grok Build** (default). Cursor and other CLIs are not first-class modes today.
+**Agents:** **any CLI.** Grok is the default *name* and has a dedicated command; Claude / Cursor / Codex use **`devcage wrap`**.
 
 | You want | Use |
 |----------|-----|
