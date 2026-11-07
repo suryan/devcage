@@ -24,6 +24,7 @@ mod config;
 mod events;
 mod grok_mode;
 mod limits;
+mod mcp_mode;
 mod net_policy;
 mod orchestrate;
 mod plan;
@@ -185,6 +186,28 @@ fn dispatch(cfg: &Config, cli: Cli) -> anyhow::Result<ExitCode> {
             }
             Ok(ExitCode::SUCCESS)
         },
+        Commands::Mcp {
+            print,
+            verbose,
+            container,
+            allow_env_only,
+            net,
+            share_workspace,
+            workspace,
+            command,
+        } => mcp_mode::run_mcp(
+            cfg,
+            &mcp_mode::McpParams {
+                print_only: print,
+                verbose,
+                container,
+                allow_env_only,
+                net,
+                share_workspace,
+                workspace,
+                command,
+            },
+        ),
         Commands::Wrap {
             print,
             allow_host_profile,

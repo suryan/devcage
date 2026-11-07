@@ -220,7 +220,7 @@ fn print_banner(
         // Linux bubblewrap — no extra warning.
     } else if !use_seatbelt && cfg!(target_os = "macos") && !params.no_seatbelt {
         eprintln!("  warning:   sandbox-exec not found; env-only wrap");
-    } else if !params.no_seatbelt && !nested {
+    } else if !use_seatbelt && !params.no_seatbelt && !nested {
         eprintln!("  warning:   no bwrap/sandbox-exec on PATH; env-only wrap");
     } else {
         // OS sandbox active or user requested env-only: no extra warning.
@@ -419,6 +419,7 @@ pub fn write_wrap_seatbelt_profile(
          {net_line}\
          (allow file-read-metadata)\n\
          (allow file-read*\n\
+           (literal \"/\")\n\
          {read_rules}\n\
          )\n\
          (allow file-write*\n\

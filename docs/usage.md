@@ -7,6 +7,7 @@
 |----------|-----|
 | Daily coding with **Grok** (recommended) | **`devcage grok`** |
 | **Any other agent** (Claude, Cursor, Codex, …) without its own sandbox | **`devcage wrap -- <agent…>`** |
+| Box **one MCP connector** (agent stays on the host) | **`devcage mcp -- <command…>`** |
 | Deep cage for one command | **`devcage run -p offline\|untrusted\|agent -- …`** |
 | Architecture / threat model detail | [recommended-stack.md](./recommended-stack.md) |
 | Container images | [agent-images.md](./agent-images.md) |
@@ -524,15 +525,33 @@ Host-native Grok (Darwin) **does not** run inside a Linux container image.
 ## Composition with pkg-guard / MCP (optional)
 
 ```text
-Grok (via devcage grok)
-  ├─ built-ins (sandboxed)
-  ├─ MCP → mcp-guard → secret-launcher → MCP server
+Grok (via devcage grok)          # optional; the agent is not required to be caged
+  ├─ built-ins
+  ├─ MCP client spawns, per server you choose:
+  │    mcp-guard → mcp-secret-launcher → devcage mcp → uvx|npx → that connector
   ├─ PATH: pkg-guard shims (uvx/npx)
   └─ optional: devcage run …
 ```
 
-1. Host PATH: pkg-guard shims for `uvx` / `npx`
-2. MCP servers: wrap with mcp-guard + mcp-secret-launcher
+`devcage mcp` is connector isolation only. Cursor, Grok, Claude, or any other client keeps running on the host. You do not need `devcage grok`, `devcage wrap`, or `devcage run` for the connector cage. Connectors you leave out of the chain launch as they do today.
+
+That instance is limited to the secret injected for its profile, the network you leave on (`--net allowed` by default, `--net none` to block), a workspace only with `--share-workspace ro|rw`, and an ephemeral home that is wiped on exit. It does not get Keychain, the SSH agent, or the rest of the host home. One profile's credential is a much smaller exposure than every secret on the instance.
+
+```bash
+devcage mcp -- uvx my-server==1.2.3
+devcage mcp --net none --share-workspace ro -- npx -y some-server@1.0.0
+devcage mcp --print -- uvx my-server==1.2.3
+devcage mcp --container -- uvx my-server==1.2.3   # Linux guest; see note below
+```
+
+`--container` on macOS runs a Linux guest. A Darwin `uvx` / `npx` binary cannot run there. Use the default light wrap for host-native connectors.
+
+Light wrap fails closed when `sandbox-exec` and `bwrap` are both missing. `--allow-env-only` starts anyway and does not limit the filesystem. Apple platform binaries can still reach Keychain; ordinary connector binaries (uv, node, python) cannot.
+
+Copy-paste chain: [examples/mcp/](../examples/mcp/).
+
+1. Host PATH: pkg-guard shims for `uvx` / `npx` (they stay the command inside `devcage mcp`)
+2. MCP servers you choose to box: mcp-guard, then mcp-secret-launcher, then `devcage mcp`
 3. Untrusted installs/scripts: prefer `devcage run -p offline|untrusted`
 
 ## Quality gate (contributors)

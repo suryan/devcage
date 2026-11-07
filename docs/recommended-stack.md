@@ -22,7 +22,8 @@ Grok (host) + global skills + built-in tools
     │
     ├─ Grok --sandbox keys-first         (via `devcage grok`)
     ├─ Project permission deny           (Read/Edit/Bash rules)
-    ├─ MCP → mcp-guard → secret-launcher → MCP servers   (keys)
+    ├─ MCP you choose:
+    │    mcp-guard → secret-launcher → devcage mcp → uvx|npx → that connector
     ├─ pkg-guard shims                   (uvx / npx supply chain)
     └─ optional: Bash allowlist includes `devcage run …`
          for truly untrusted / offline / Linux-only work
@@ -40,6 +41,7 @@ Other agents (no native sandbox):
 | **mcp-secret-launcher** | Keys stay in Keychain; injected only into MCP server env | Does not sandbox Grok’s bash |
 | **mcp-guard** | MCP tool allow/deny, args, HITL | Does not constrain built-in `Edit`/`Bash` |
 | **pkg-guard** | Package install policy on shims | Runtime secret isolation |
+| **`devcage mcp`** | Filesystem, network, and process cage around **one connector you chain** | Does not isolate the agent; does not apply to connectors you leave out of the chain |
 | **DevCage container** | Stronger venue for **commands** you deliberately cage | Not the daily I/O path for every keystroke |
 | **`devcage wrap`** | Process Seatbelt (macOS) or **bwrap** (Linux) around **any** agent; `--net none`; no wholesale `$HOME` read | Not Grok’s `--sandbox`; env-only if neither tool is present |
 
@@ -50,6 +52,7 @@ Other agents (no native sandbox):
 | Keys (even non-prod) | Keychain + secret-launcher; sandbox `deny` for `**/.env`, `**/*.pem`; no host secret mounts into casual shells |
 | Keychain / SSH | Stay on host; never mount into DevCage; scrub `SSH_AUTH_SOCK` in host-restricted profiles |
 | MCP abuse | mcp-guard policies |
+| One connector overreaches | `devcage mcp` in that server's chain: its injected secret and optional workspace, not every secret on the instance |
 | Malicious packages | pkg-guard |
 | Project code burnable | Sandbox may still write the project — acceptable if keys are out of tree |
 | Untrusted one-shot command | `devcage run -p offline\|untrusted -- …` |
@@ -121,8 +124,10 @@ Tune `deny` / `allow` for your repo. `deny` always wins over always-approve.
 ### Secrets (unchanged)
 
 ```text
-mcp-guard → mcp-secret-launcher → uvx|npx MCP server
+mcp-guard → mcp-secret-launcher → devcage mcp → uvx|npx MCP server
 ```
+
+Add `devcage mcp --` only on the connectors you want boxed. The agent stays on the host. That process keeps the secret injected for its profile. It does not get Keychain, the SSH agent, or the rest of the host home. See [usage.md](./usage.md) and [examples/mcp/](../examples/mcp/).
 
 Do **not** put API tokens in project `.env` if you can avoid it; if they must exist on disk, list them in sandbox `deny`.
 

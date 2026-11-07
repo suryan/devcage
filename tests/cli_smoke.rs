@@ -252,3 +252,51 @@ fn wrap_print_and_true() {
         String::from_utf8_lossy(&run.stderr)
     );
 }
+
+#[test]
+fn mcp_print_and_true() {
+    let print = bin()
+        .args(["mcp", "--print", "--", "uvx", "server==1.2.3"])
+        .output()
+        .expect("mcp print");
+    assert!(
+        print.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&print.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&print.stdout);
+    assert!(stdout.contains("mode: mcp"), "stdout={stdout}");
+    assert!(stdout.contains("agent_isolated: false"), "stdout={stdout}");
+    assert!(stdout.contains("share_workspace: none"), "stdout={stdout}");
+    assert!(
+        stdout.contains("keep_injected_env: true"),
+        "stdout={stdout}"
+    );
+    assert!(
+        !stdout.contains("ANTHROPIC_API_KEY="),
+        "plan must not print secret values"
+    );
+
+    let bad = bin()
+        .args(["mcp", "--net", "full", "--", "/usr/bin/true"])
+        .output()
+        .expect("mcp bad net");
+    assert!(!bad.status.success());
+
+    let run = bin()
+        .args(["mcp", "--", "/usr/bin/true"])
+        .env("ANTHROPIC_API_KEY", "test-key")
+        .output()
+        .expect("mcp true");
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    assert!(run.status.success(), "stderr={stderr} stdout={stdout}");
+    assert!(
+        stdout.is_empty(),
+        "connector stdout must stay empty for true, got {stdout}"
+    );
+    assert!(
+        !stderr.contains("test-key"),
+        "stderr leaked the injected key: {stderr}"
+    );
+}

@@ -27,6 +27,9 @@ devcage grok  →  grok --sandbox keys-first + recipes + DevCage-ready env
 # Other agents (no native sandbox)
 devcage wrap [--net none] -- <agent>  →  Seatbelt (macOS) / bwrap (Linux) + env scrub
 
+# One MCP connector (agent stays on the host)
+devcage mcp -- <uvx|npx|binary>  →  Seatbelt / bwrap (or --container)
+
 # Deep cage (any agent session)
 devcage run  →  profile  →  container|host backend  →  command
                     ↑
@@ -37,7 +40,7 @@ devcage run  →  profile  →  container|host backend  →  command
 
 | Piece | Role |
 |-------|------|
-| **CLI** | **`grok`** (daily Grok), **`wrap`** (any agent), `run`, `shell`, `agent`, `limits`, `stop`, `doctor` |
+| **CLI** | **`grok`** (daily Grok), **`wrap`** (any agent), **`mcp`** (one connector), `run`, `shell`, `agent`, `limits`, `stop`, `doctor` |
 | **Profile** | Fixed core set first: `agent`, `offline`, `host` |
 | **Session** | id, workspace, ephemeral home, stop / wipe |
 | **Backend** | MVP: **container** only |
@@ -48,7 +51,7 @@ devcage run  →  profile  →  container|host backend  →  command
 ```text
 Grok (host, built-in tools)
   ├─ devcage grok → --sandbox / permission rules
-  ├─ MCP → mcp-guard → secret-launcher → MCP servers
+  ├─ MCP you choose → mcp-guard → secret-launcher → devcage mcp → pkg-guard shim → server
   ├─ PATH: pkg-guard shims (uvx/npx)
   └─ optional: devcage run            (deep container venue)
 
@@ -64,6 +67,8 @@ None of these replace each other. Details: [recommended-stack.md](./recommended-
 | Module | Responsibility |
 |--------|----------------|
 | `cli` | clap surface |
+| `mcp_mode` | connector isolation (`devcage mcp`): stdio-safe light wrap or container |
+| `bwrap_plan` | Linux `bwrap` argv for `wrap` and `mcp` |
 | `profiles` | built-in policies (`agent` / `offline` / `host`) |
 | `plan` | mounts + `NetMode` |
 | `session` | JSON session store + ephemeral home |
@@ -77,7 +82,7 @@ None of these replace each other. Details: [recommended-stack.md](./recommended-
 | Backend | MVP | Notes |
 |---------|-----|--------|
 | `container` | **Yes** | Docker/Podman; order: `DEVCAGE_CONTAINER_RUNTIME`, podman, docker |
-| `bwrap` | **Wrap only** | `devcage wrap` on Linux when `bwrap` is on PATH; argv plan unit-tested on macOS |
+| `bwrap` | **Wrap and mcp** | `devcage wrap` and `devcage mcp` on Linux when `bwrap` is on PATH; argv plan unit-tested on macOS |
 | `vm` / `native-mac` | No | Later / phase 3 |
 
 **Fail closed** if container runtime missing for non-`host` profiles.

@@ -25,6 +25,9 @@ devcage wrap -- claude
 devcage wrap -- cursor-agent
 devcage wrap --net none -- codex
 
+# Box one MCP connector (agent stays on the host)
+devcage mcp -- uvx my-server==1.2.3
+
 # Deep cage for a command (any agent / any shell)
 devcage run -p offline -- ./sketchy.sh
 devcage run -p untrusted -- sh
@@ -35,6 +38,7 @@ devcage stop --wipe
 |------|-----|
 | **`devcage grok`** | Daily Grok: agent `--sandbox` + recipes + safe env |
 | **`devcage wrap`** | Daily *other* agents: Seatbelt (macOS) or `bwrap` (Linux) |
+| **`devcage mcp`** | Opt-in cage for **one MCP connector** you chain; the agent stays on the host |
 | **`devcage run`** | Disposable Linux cage for a **command** |
 | **mcp-secret-launcher** | Keys in Keychain → MCP env only |
 | **mcp-guard** | MCP tool policy / HITL |
@@ -80,6 +84,7 @@ From a clone (prefix overridable; default `$HOME/.local`):
 | In scope | Later |
 |----------|--------|
 | **`devcage grok`** + **`devcage wrap`** (Seatbelt / bwrap) | VM |
+| **`devcage mcp`** connector isolation (opt-in CLI chain) | VM |
 | Profiles: `agent`, `offline`, `untrusted`, `host`, … | GUI / mobile special profiles |
 | Container backend (Docker/Podman) + macOS Seatbelt wrap | VM |
 | Project RW + ephemeral home + secret denylist | COW workspace, durable cages |
@@ -124,7 +129,7 @@ Closed decisions: [docs/architecture.md](docs/architecture.md#design-decisions-c
 - [pkg-guard](https://github.com/suryan/pkg-guard) — package **policy**
 - [mcp-secret-launcher](https://github.com/suryan/mcp-secret-launcher) — Keychain → MCP env
 - [mcp-guard](https://github.com/suryan/mcp-guard) — MCP L7 policy / HITL
-- DevCage — optional **command venue** (container / offline / untrusted)
+- DevCage — optional **command venue** (container / offline / untrusted) and opt-in **`devcage mcp`** for one connector
 
 ## License
 

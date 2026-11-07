@@ -187,6 +187,49 @@ pub enum Commands {
         #[arg(long, short = 'w', env = "DEVCAGE_WORKSPACE")]
         workspace: Option<PathBuf>,
     },
+    /// Connector isolation mode: box one MCP server. The agent stays on the host.
+    ///
+    /// Chain it like the sister tools, only for connectors you choose:
+    ///
+    ///   mcp-guard → mcp-secret-launcher → devcage mcp → uvx|npx → server
+    ///
+    /// The server keeps the secret injected for its profile. It does not get
+    /// Keychain, the SSH agent, or the rest of the host home.
+    ///
+    /// Examples:
+    ///   devcage mcp -- uvx my-server==1.2.3
+    ///   devcage mcp --net none --share-workspace ro -- npx -y some-server@1.0.0
+    ///   devcage mcp --print -- uvx my-server==1.2.3
+    Mcp {
+        /// Print the plan and do not start the connector.
+        #[arg(long)]
+        print: bool,
+        /// Explain the cage on stderr. Stdout stays the connector's stream.
+        #[arg(long)]
+        verbose: bool,
+        /// Linux container instead of a light wrap (Seatbelt / bwrap).
+        ///
+        /// On macOS the guest is Linux, so a Darwin `uvx`/`npx` binary cannot run there.
+        #[arg(long)]
+        container: bool,
+        /// Start even when `sandbox-exec` and `bwrap` are missing.
+        ///
+        /// Env-only does not limit filesystem or Keychain access.
+        #[arg(long)]
+        allow_env_only: bool,
+        /// Process network: `allowed` (default) or `none`.
+        #[arg(long, default_value = "allowed")]
+        net: String,
+        /// Workspace shared into the cage: `none` (default), `ro`, or `rw`.
+        #[arg(long, default_value = "none")]
+        share_workspace: String,
+        /// Project directory when `--share-workspace` is `ro` or `rw`.
+        #[arg(long, short = 'w', env = "DEVCAGE_WORKSPACE")]
+        workspace: Option<PathBuf>,
+        /// Connector command and args (use `--` before the command).
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
+        command: Vec<String>,
+    },
     /// Run **any** agent/command under `DevCage` process wrap (no agent sandbox required).
     ///
     /// On macOS: `sandbox-exec` Seatbelt around the process. Always: scrub env,
@@ -364,6 +407,32 @@ mod tests {
         assert!(!no_seatbelt);
         assert!(!ephemeral_home);
         assert_eq!(command, vec!["claude", "-p", "hi"]);
+    }
+
+    #[test]
+    fn parses_mcp_defaults() {
+        let cli = Cli::try_parse_from(["devcage", "mcp", "--print", "--", "uvx", "server==1.2.3"])
+            .expect("parse");
+        let Commands::Mcp {
+            print,
+            verbose,
+            container,
+            allow_env_only,
+            net,
+            share_workspace,
+            command,
+            ..
+        } = cli.command
+        else {
+            unreachable!("expected Mcp");
+        };
+        assert!(print);
+        assert!(!verbose);
+        assert!(!container);
+        assert!(!allow_env_only);
+        assert_eq!(net, "allowed");
+        assert_eq!(share_workspace, "none");
+        assert_eq!(command, vec!["uvx", "server==1.2.3"]);
     }
 
     #[test]

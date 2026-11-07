@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`devcage mcp` connector isolation.** Opt-in CLI link, same shape as mcp-guard and mcp-secret-launcher. The agent stays on the host. The boxed server keeps the secret injected for its profile and does not get Keychain, the SSH agent, or the rest of the host home. Light wrap (Seatbelt / bwrap) by default; `--container` is optional. Missing an OS sandbox fails closed unless `--allow-env-only`.
+
 - **One-line install:** `curl -fsSL https://raw.githubusercontent.com/suryan/devcage/main/scripts/install.sh | bash -s -- --yes` clones, builds, and installs to `$HOME/.local/bin`. From a checkout, `./scripts/install.sh` still builds that tree. Flags: `--yes`, `--ref`, `--prefix`, `--local`, `--no-keep-src`. Rustup is bootstrapped when `cargo` is missing.
 
 ## [0.7.0] - 2026-08-13
