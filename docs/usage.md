@@ -356,7 +356,7 @@ devcage wrap --ephemeral-home -- claude  # remap HOME (may break login)
 | **`DEVCAGE_DATA_DIR`** | Sandbox-safe path for nested `devcage run` |
 | **`DEVCAGE_DENY_HOST=1`** | Nested break-glass `host` profile blocked by default |
 | **Real `HOME` (default)** | Agent auth/skills keep working; optional `--ephemeral-home` for stricter (often breaks OAuth) |
-| **Linux** | Uses **`bwrap`** when on `PATH` (same binds: project/data/agent dirs; `--unshare-net` if `--net none`). If `bwrap` is missing → env-only + warning |
+| **Linux** | Uses **`bwrap`** when on `PATH` (same binds: project/data/agent dirs; `--unshare-net` if `--net none`). If `/etc/resolv.conf` is a symlink, the resolved file (for example `stub-resolv.conf`) is bind-mounted read-only so DNS works. `devcage mcp` uses the same bind. If `bwrap` is missing → env-only + warning |
 
 **`devcage grok` vs `devcage wrap`:**
 
@@ -389,6 +389,7 @@ devcage run -p offline -- ./sketchy.sh
 
 | Symptom | What it means | Fix |
 |---------|----------------|-----|
+| `Could not resolve host` inside Linux `wrap` or `mcp` | `/etc/resolv.conf` points at a file on `/run` (systemd-resolved `stub-resolv.conf`) that the cage did not mount | Current DevCage bind-mounts that resolved file read-only |
 | `Expected a directory but got a file` (e.g. `.gitconfig`) | `read_only` listed a **file**; Grok requires **directories** | Latest DevCage + `devcage init-grok --force` |
 | `profile host is denied` | Combined mode blocks break-glass host | Use `offline`/`untrusted`/`agent`, or `--allow-host-profile` |
 | `Operation not permitted` on data dir | Session data under blocked home path | Use current `devcage grok` (temp data_dir) or export `DEVCAGE_DATA_DIR=$TMPDIR/devcage-data` |

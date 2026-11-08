@@ -82,7 +82,7 @@ None of these replace each other. Details: [recommended-stack.md](./recommended-
 | Backend | MVP | Notes |
 |---------|-----|--------|
 | `container` | **Yes** | Docker/Podman; order: `DEVCAGE_CONTAINER_RUNTIME`, podman, docker |
-| `bwrap` | **Wrap and mcp** | `devcage wrap` and `devcage mcp` on Linux when `bwrap` is on PATH; argv plan unit-tested on macOS |
+| `bwrap` | **Wrap and mcp** | `devcage wrap` and `devcage mcp` on Linux when `bwrap` is on PATH; argv plan unit-tested on macOS. Read-only bind of the resolved `/etc/resolv.conf` target so a `stub-resolv.conf` symlink still resolves |
 | `vm` / `native-mac` | No | Later / phase 3 |
 
 **Fail closed** if container runtime missing for non-`host` profiles.

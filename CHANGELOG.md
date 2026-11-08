@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Linux `bwrap` DNS.** `devcage wrap` and `devcage mcp` bind `/etc` read-only. When `/etc/resolv.conf` is a symlink (systemd-resolved `stub-resolv.conf` on `/run`), that target was outside the cage, so name lookup failed. The plan now bind-mounts the resolved file read-only and recreates only the directories and symlinks needed to follow it.
+
 ### Added
 
 - **`devcage mcp` connector isolation.** Opt-in CLI link, same shape as mcp-guard and mcp-secret-launcher. The agent stays on the host. The boxed server keeps the secret injected for its profile and does not get Keychain, the SSH agent, or the rest of the host home. Light wrap (Seatbelt / bwrap) by default; `--container` is optional. Missing an OS sandbox fails closed unless `--allow-env-only`.
