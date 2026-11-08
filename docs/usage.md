@@ -390,6 +390,7 @@ devcage run -p offline -- ./sketchy.sh
 | Symptom | What it means | Fix |
 |---------|----------------|-----|
 | `Could not resolve host` inside Linux `wrap` or `mcp` | `/etc/resolv.conf` points at a file on `/run` (systemd-resolved `stub-resolv.conf`) that the cage did not mount | Current DevCage bind-mounts that resolved file read-only |
+| `npx: not found` inside Linux `devcage mcp` (nvm) | `bin/npx` points at `../lib/node_modules/...` and only `bin` was mounted | Current DevCage bind-mounts that Node prefix read-only |
 | `Expected a directory but got a file` (e.g. `.gitconfig`) | `read_only` listed a **file**; Grok requires **directories** | Latest DevCage + `devcage init-grok --force` |
 | `profile host is denied` | Combined mode blocks break-glass host | Use `offline`/`untrusted`/`agent`, or `--allow-host-profile` |
 | `Operation not permitted` on data dir | Session data under blocked home path | Use current `devcage grok` (temp data_dir) or export `DEVCAGE_DATA_DIR=$TMPDIR/devcage-data` |
@@ -546,6 +547,8 @@ devcage mcp --container -- uvx my-server==1.2.3   # Linux guest; see note below
 ```
 
 `--container` on macOS runs a Linux guest. A Darwin `uvx` / `npx` binary cannot run there. Use the default light wrap for host-native connectors.
+
+On Linux, an nvm-style Node prefix is mounted read-only when `bin/npx` or `bin/npm` is a symlink into sibling `lib`. The host home and credential directories (`~/.aws`, `~/.ssh`, Keychains) are not mounted.
 
 Light wrap fails closed when `sandbox-exec` and `bwrap` are both missing. `--allow-env-only` starts anyway and does not limit the filesystem. Apple platform binaries can still reach Keychain; ordinary connector binaries (uv, node, python) cannot.
 

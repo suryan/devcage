@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Linux `bwrap` DNS.** `devcage wrap` and `devcage mcp` bind `/etc` read-only. When `/etc/resolv.conf` is a symlink (systemd-resolved `stub-resolv.conf` on `/run`), that target was outside the cage, so name lookup failed. The plan now bind-mounts the resolved file read-only and recreates only the directories and symlinks needed to follow it.
+- **`devcage mcp` with nvm Node.** `npx` and `npm` are symlinks from `<prefix>/bin` into sibling `<prefix>/lib`. The cage mounted only the `PATH` directory, so those links dangled and `npx` connectors failed. When a `PATH` entry symlinks into sibling `lib` or `lib64`, that install prefix is bind-mounted read-only. `$HOME` and credential directories stay unmounted.
 
 ### Added
 

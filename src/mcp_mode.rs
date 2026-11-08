@@ -905,6 +905,21 @@ fn seatbelt_for(settings: &McpSettings, child_env: &McpChildEnv, host_home: &Pat
 }
 
 fn read_extra_paths(home: &Path, pkg_cache: &Path, command: &[String]) -> Vec<PathBuf> {
+    let path_env = std::env::var("PATH").unwrap_or_default();
+    extra_paths_from(home, pkg_cache, command, &path_env)
+}
+
+/// Directories the connector may read: toolchain bins, plus an install prefix
+/// when a `PATH` entry symlinks into a sibling `lib` (nvm `npx` → `../lib/...`).
+///
+/// The prefix is the parent of that `PATH` directory. `$HOME` and credential
+/// directories are never added.
+fn extra_paths_from(
+    home: &Path,
+    pkg_cache: &Path,
+    command: &[String],
+    path_env: &str,
+) -> Vec<PathBuf> {
     let mut out = vec![
         home.join(".local").join("bin"),
         home.join(".local").join("share").join("pkg-guard"),
@@ -912,15 +927,13 @@ fn read_extra_paths(home: &Path, pkg_cache: &Path, command: &[String]) -> Vec<Pa
         home.join(".config").join("pkg-guard"),
         pkg_cache.to_path_buf(),
     ];
-    if let Ok(path) = std::env::var("PATH") {
-        for component in path.split(':') {
-            if component.is_empty() {
-                continue;
-            }
-            let candidate = PathBuf::from(component);
-            if candidate.is_absolute() && !is_broad_or_secret(home, &candidate) {
-                push_unique(&mut out, &candidate);
-            }
+    for component in path_env.split(':') {
+        if component.is_empty() {
+            continue;
+        }
+        let candidate = PathBuf::from(component);
+        if candidate.is_absolute() && !is_broad_or_secret(home, &candidate) {
+            push_unique(&mut out, &candidate);
         }
     }
     if let Some(prog) = command.first() {
@@ -933,7 +946,95 @@ fn read_extra_paths(home: &Path, pkg_cache: &Path, command: &[String]) -> Vec<Pa
             }
         }
     }
+    push_sibling_lib_prefixes(&mut out, home);
     out
+}
+
+/// Bind `.../versions/node/v20` when `.../bin/npx` points at `../lib/...`.
+///
+/// A symlink that stays in `bin`, or that points at `../downloads` rather than
+/// `lib`, does not pull in the parent. That keeps `~/.grok` and `~/.cargo`
+/// closed even when their `bin` directories are on `PATH`.
+fn push_sibling_lib_prefixes(out: &mut Vec<PathBuf>, home: &Path) {
+    let dirs = out.clone();
+    for dir in dirs {
+        let Some(parent) = dir.parent() else {
+            continue;
+        };
+        if !install_prefix_is_safe(home, parent) {
+            continue;
+        }
+        if dir_links_sibling_lib(&dir, parent) {
+            push_unique(out, parent);
+        }
+    }
+}
+
+fn install_prefix_is_safe(home: &Path, prefix: &Path) -> bool {
+    !prefix.as_os_str().is_empty() && !is_broad_or_secret(home, prefix) && !is_system_prefix(prefix)
+}
+
+/// Roots already visible through the system bind, or too wide to add whole.
+fn is_system_prefix(path: &Path) -> bool {
+    const SYSTEM: &[&str] = &[
+        "/",
+        "/usr",
+        "/usr/local",
+        "/bin",
+        "/sbin",
+        "/lib",
+        "/lib64",
+        "/etc",
+        "/opt",
+        "/opt/homebrew",
+        "/System",
+        "/Library",
+        "/private",
+        "/var",
+        "/run",
+        "/dev",
+        "/proc",
+        "/tmp",
+        "/sys",
+        "/snap",
+        "/boot",
+        "/home",
+        "/Users",
+    ];
+    SYSTEM.iter().any(|prefix| path == Path::new(prefix))
+}
+
+fn dir_links_sibling_lib(dir: &Path, parent: &Path) -> bool {
+    let lib_roots = sibling_lib_roots(parent);
+    if lib_roots.is_empty() {
+        return false;
+    }
+    let Ok(entries) = fs::read_dir(dir) else {
+        return false;
+    };
+    entries
+        .flatten()
+        .any(|entry| symlink_lands_in(&entry.path(), &lib_roots))
+}
+
+fn sibling_lib_roots(parent: &Path) -> Vec<PathBuf> {
+    ["lib", "lib64"]
+        .into_iter()
+        .filter_map(|name| fs::canonicalize(parent.join(name)).ok())
+        .collect()
+}
+
+fn symlink_lands_in(path: &Path, lib_roots: &[PathBuf]) -> bool {
+    let Ok(meta) = fs::symlink_metadata(path) else {
+        return false;
+    };
+    if !meta.file_type().is_symlink() {
+        return false;
+    }
+    let Ok(target) = fs::canonicalize(path) else {
+        return false;
+    };
+    lib_roots.iter().any(|root| target.starts_with(root))
 }
 
 fn is_broad_or_secret(home: &Path, path: &Path) -> bool {
@@ -1028,6 +1129,7 @@ mod tests {
         render_seatbelt, should_scrub, HostCacheInputs, LaunchMode, McpChildEnv, McpContainerPlan,
         McpParams, McpPlanView, McpSettings, OsSandbox, WorkspaceShare,
     };
+    use std::fs;
     use std::path::{Path, PathBuf};
 
     fn workspace_share_label(share: WorkspaceShare) -> &'static str {
@@ -1312,5 +1414,151 @@ mod tests {
     fn shim_path_prepend_is_stable() {
         let home = Path::new("/no/such/home");
         assert_eq!(prepend_shim_path(home, "/usr/bin"), "/usr/bin");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn path_symlink_into_sibling_lib_adds_prefix_not_home_or_secrets() {
+        use std::os::unix::fs::symlink;
+
+        let root = mcp_temp("nvm-prefix");
+        let home = root.join("home");
+        let prefix = root.join("node").join("v20");
+        let bin = prefix.join("bin");
+        let npx_js = prefix.join("lib/node_modules/npm/bin/npx-cli.js");
+        fs::create_dir_all(npx_js.parent().expect("parent")).expect("lib");
+        fs::create_dir_all(&bin).expect("bin");
+        fs::write(&npx_js, "#!/usr/bin/sh\necho NPX-OK\n").expect("npx js");
+        symlink("../lib/node_modules/npm/bin/npx-cli.js", bin.join("npx")).expect("npx link");
+
+        let cargo = root.join("cargo");
+        fs::create_dir_all(cargo.join("bin")).expect("cargo bin");
+        fs::create_dir_all(cargo.join("lib")).expect("cargo lib");
+        fs::write(cargo.join("bin/rustup"), "x").expect("rustup");
+        symlink("rustup", cargo.join("bin/cargo")).expect("cargo link");
+
+        let grok = root.join("grok");
+        fs::create_dir_all(grok.join("bin")).expect("grok bin");
+        fs::create_dir_all(grok.join("lib")).expect("grok lib");
+        fs::create_dir_all(grok.join("downloads")).expect("downloads");
+        fs::write(grok.join("downloads/grok-bin"), "x").expect("grok bin file");
+        symlink("../downloads/grok-bin", grok.join("bin/grok")).expect("grok link");
+
+        fs::create_dir_all(home.join("bin")).expect("home bin");
+        fs::create_dir_all(home.join("lib")).expect("home lib");
+        fs::write(home.join("lib/tool"), "x").expect("home tool");
+        symlink("../lib/tool", home.join("bin/tool")).expect("home link");
+
+        fs::create_dir_all(home.join(".aws/bin")).expect("aws bin");
+        fs::create_dir_all(home.join(".aws/lib")).expect("aws lib");
+        fs::create_dir_all(home.join(".ssh")).expect("ssh");
+        fs::write(home.join(".aws/lib/x"), "x").expect("aws lib file");
+        symlink("../lib/x", home.join(".aws/bin/x")).expect("aws link");
+
+        let path_env = [
+            bin.clone(),
+            cargo.join("bin"),
+            grok.join("bin"),
+            home.join("bin"),
+            home.join(".aws/bin"),
+        ]
+        .iter()
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>()
+        .join(":");
+        let got = super::extra_paths_from(&home, &root.join("cache"), &["npx".into()], &path_env);
+
+        assert!(got.iter().any(|path| path == &prefix), "{got:?}");
+        assert!(got.iter().any(|path| path == &bin), "{got:?}");
+        assert!(!got.iter().any(|path| path == &cargo), "{got:?}");
+        assert!(!got.iter().any(|path| path == &grok), "{got:?}");
+        assert!(!got.iter().any(|path| path == &home), "{got:?}");
+        assert!(
+            !got.iter().any(|path| path.starts_with(home.join(".aws"))),
+            "{got:?}"
+        );
+        assert!(
+            !got.iter().any(|path| path.starts_with(home.join(".ssh"))),
+            "{got:?}"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_bwrap_runs_npx_when_prefix_is_mounted() {
+        use std::os::unix::fs::symlink;
+        use std::process::Command;
+
+        if !crate::util::which("bwrap") {
+            return;
+        }
+        let root = mcp_temp("bwrap-npx");
+        let home = root.join("home");
+        fs::create_dir_all(&home).expect("home");
+        let prefix = root.join("node").join("v20");
+        let bin = prefix.join("bin");
+        let npx_js = prefix.join("lib/node_modules/npm/bin/npx-cli.js");
+        fs::create_dir_all(npx_js.parent().expect("parent")).expect("lib");
+        fs::create_dir_all(&bin).expect("bin");
+        fs::write(&npx_js, "#!/usr/bin/sh\necho NPX-OK\n").expect("npx js");
+        symlink("../lib/node_modules/npm/bin/npx-cli.js", bin.join("npx")).expect("npx link");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&npx_js).expect("meta").permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&npx_js, perms).expect("chmod");
+        }
+
+        let mounts = super::extra_paths_from(
+            &home,
+            &root.join("cache"),
+            &[bin.join("npx").display().to_string()],
+            &bin.display().to_string(),
+        );
+        let mut cmd = Command::new("bwrap");
+        cmd.args([
+            "--die-with-parent",
+            "--ro-bind",
+            "/usr",
+            "/usr",
+            "--ro-bind",
+            "/lib",
+            "/lib",
+            "--ro-bind",
+            "/lib64",
+            "/lib64",
+        ]);
+        for mount in mounts.iter().filter(|path| path.is_dir()) {
+            let text = mount.display().to_string();
+            cmd.args(["--ro-bind", &text, &text]);
+        }
+        let npx = bin.join("npx");
+        cmd.args(["--", &npx.display().to_string()]);
+        let output = cmd.output().expect("bwrap");
+        let _ = fs::remove_dir_all(&root);
+        if !output.status.success() {
+            let err = String::from_utf8_lossy(&output.stderr);
+            if err.contains("namespace") || err.contains("uid map") {
+                eprintln!("skip: {err}");
+                return;
+            }
+            panic!("bwrap failed: {err}");
+        }
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "NPX-OK\n");
+    }
+
+    fn mcp_temp(label: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "devcage-mcp-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        fs::create_dir_all(&dir).expect("mkdir");
+        dir
     }
 }
