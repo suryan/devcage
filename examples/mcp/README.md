@@ -47,4 +47,7 @@ Light wrap is the default (Seatbelt on macOS, bwrap on Linux). `--container` run
 ```bash
 devcage mcp --print -- uvx my-server==1.2.3
 devcage mcp --net none --share-workspace ro -- npx -y some-server@1.0.0
+devcage mcp --open-urls -- npx -y mcp-remote@0.16.0 https://mcp.atlassian.com/v1/mcp/authv2
 ```
+
+`--open-urls` is off by default. It forwards a sign-in link to the host over a write-only FIFO and prints that link on stderr. It does not share the display socket, the DBus session bus, or `/run/user` with the cage. `--open-urls=print` prints the link and does not start a browser.

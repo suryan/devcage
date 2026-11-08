@@ -550,6 +550,13 @@ devcage mcp --container -- uvx my-server==1.2.3   # Linux guest; see note below
 
 On Linux, an nvm-style Node prefix is mounted read-only when `bin/npx` or `bin/npm` is a symlink into sibling `lib`. The host home and credential directories (`~/.aws`, `~/.ssh`, Keychains) are not mounted.
 
+`--open-urls` (off by default) forwards a connector sign-in link to the host. The cage gets a small `xdg-open` / `open` shim and a write-only FIFO. DevCage prints the link on its own stderr and, when a graphical session exists, opens that URL with the host `xdg-open` or `open` as a single argument. `--open-urls=print` prints the link and does not start a browser. The display socket, the DBus session bus, and `/run/user` are not mounted. While the flag is on, the cage also does not inherit `DISPLAY`, `WAYLAND_DISPLAY`, or the desktop session variables, so the usual `xdg-open` script runs the shim instead of talking to the session bus. Only `https` URLs are opened, plus `http` for `localhost`, `127.0.0.1`, and `::1`.
+
+```bash
+devcage mcp --open-urls -- npx -y mcp-remote@0.16.0 https://mcp.atlassian.com/v1/mcp/authv2
+devcage mcp --open-urls=print -- npx -y mcp-remote@0.16.0 https://mcp.atlassian.com/v1/mcp/authv2
+```
+
 Light wrap fails closed when `sandbox-exec` and `bwrap` are both missing. `--allow-env-only` starts anyway and does not limit the filesystem. Apple platform binaries can still reach Keychain; ordinary connector binaries (uv, node, python) cannot.
 
 Copy-paste chain: [examples/mcp/](../examples/mcp/).

@@ -12,6 +12,8 @@ use std::ffi::OsString;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
+use crate::url_bridge::{GUEST_DIR, GUEST_FIFO, GUEST_SHIM_DIR};
+
 /// Inputs for a wrap-style bubblewrap launch.
 #[derive(Debug, Clone)]
 pub struct BwrapPlan {
@@ -118,10 +120,24 @@ pub struct McpBwrapPlan {
     pub workspace: Option<(PathBuf, McpBindMode)>,
     /// Extra read-only binds (pkg-guard config and cache, shim dir).
     pub ro_mounts: Vec<PathBuf>,
+    /// Sign-in URL shim and write-only FIFO. Absent unless `--open-urls` is set.
+    pub url_bridge: Option<McpUrlBridge>,
     /// Deny network (`--unshare-net`).
     pub net_none: bool,
     /// Guest argv (`prog` + args).
     pub command: Vec<String>,
+}
+
+/// Host paths mounted only when `--open-urls` is on.
+///
+/// The shim directory is read-only. The FIFO is writable. This does not mount
+/// the display socket, the `DBus` session bus, or `/run/user`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpUrlBridge {
+    /// Directory containing the `xdg-open` and `open` shims.
+    pub shim_dir: PathBuf,
+    /// FIFO the cage can write and cannot read.
+    pub fifo: PathBuf,
 }
 
 /// Build `bwrap` argv for connector isolation.
@@ -156,6 +172,12 @@ pub fn mcp_bwrap_argv(plan: &McpBwrapPlan) -> anyhow::Result<Vec<String>> {
     argv.extend(rw_bind(&plan.ephemeral_home));
     for mount in &plan.ro_mounts {
         argv.extend(ro_bind_path(mount));
+    }
+    if let Some(bridge) = &plan.url_bridge {
+        argv.push("--dir".to_owned());
+        argv.push(GUEST_DIR.to_owned());
+        argv.extend(bind_to(&bridge.shim_dir, GUEST_SHIM_DIR, true));
+        argv.extend(bind_to(&bridge.fifo, GUEST_FIFO, false));
     }
     if let Some((ref workspace, mode)) = plan.workspace {
         match mode {
@@ -390,11 +412,16 @@ fn rw_bind(p: &Path) -> Vec<String> {
     vec!["--bind".to_owned(), s.clone(), s]
 }
 
+fn bind_to(src: &Path, dest: &str, read_only: bool) -> Vec<String> {
+    let flag = if read_only { "--ro-bind" } else { "--bind" };
+    vec![flag.to_owned(), src.display().to_string(), dest.to_owned()]
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         bwrap_argv, is_visible, mcp_bwrap_argv, resolv_conf_bwrap_args, visible_system_prefixes,
-        BwrapPlan, McpBindMode, McpBwrapPlan,
+        BwrapPlan, McpBindMode, McpBwrapPlan, McpUrlBridge,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -461,6 +488,7 @@ mod tests {
             ephemeral_home: PathBuf::from("/tmp/eph-mcp"),
             workspace: None,
             ro_mounts: vec![PathBuf::from("/tmp/pkg-guard-cache")],
+            url_bridge: None,
             net_none: false,
             command: vec!["uvx".into(), "server==1.2.3".into()],
         })
@@ -494,6 +522,7 @@ mod tests {
             ephemeral_home: PathBuf::from("/tmp/eph-mcp"),
             workspace: Some((PathBuf::from("/tmp/ws-mcp"), McpBindMode::ReadOnly)),
             ro_mounts: Vec::new(),
+            url_bridge: None,
             net_none: true,
             command: vec!["true".into()],
         })
@@ -512,6 +541,7 @@ mod tests {
             ephemeral_home: PathBuf::from("/tmp/eph-mcp"),
             workspace: Some((PathBuf::from("/tmp/ws-mcp"), McpBindMode::ReadWrite)),
             ro_mounts: Vec::new(),
+            url_bridge: None,
             net_none: false,
             command: vec!["true".into()],
         })
@@ -522,11 +552,75 @@ mod tests {
     }
 
     #[test]
+    fn url_bridge_is_bound_only_when_the_flag_is_on() {
+        let off = mcp_bwrap_argv(&McpBwrapPlan {
+            ephemeral_home: PathBuf::from("/tmp/eph-mcp"),
+            workspace: None,
+            ro_mounts: Vec::new(),
+            url_bridge: None,
+            net_none: false,
+            command: vec!["true".into()],
+        })
+        .expect("off");
+        assert!(!off
+            .iter()
+            .any(|arg| arg == "/devcage" || arg.contains("url-bridge")));
+        assert_eq!(
+            off.iter().take(10).map(String::as_str).collect::<Vec<_>>(),
+            [
+                "bwrap",
+                "--die-with-parent",
+                "--unshare-pid",
+                "--unshare-uts",
+                "--unshare-ipc",
+                "--proc",
+                "/proc",
+                "--dev",
+                "/dev",
+                "--tmpfs",
+            ]
+        );
+
+        let shim = PathBuf::from("/tmp/devcage-shim");
+        let fifo = PathBuf::from("/tmp/devcage-fifo");
+        let on = mcp_bwrap_argv(&McpBwrapPlan {
+            ephemeral_home: PathBuf::from("/tmp/eph-mcp"),
+            workspace: None,
+            ro_mounts: Vec::new(),
+            url_bridge: Some(McpUrlBridge {
+                shim_dir: shim.clone(),
+                fifo: fifo.clone(),
+            }),
+            net_none: false,
+            command: vec!["true".into()],
+        })
+        .expect("on");
+        let shim_s = shim.display().to_string();
+        let fifo_s = fifo.display().to_string();
+        assert!(on
+            .windows(2)
+            .any(|pair| pair[0] == "--dir" && pair[1] == "/devcage"));
+        assert!(on.windows(3).any(|triple| {
+            triple[0] == "--ro-bind" && triple[1] == shim_s && triple[2] == "/devcage/bin"
+        }));
+        assert!(on.windows(3).any(|triple| {
+            triple[0] == "--bind" && triple[1] == fifo_s && triple[2] == "/devcage/url-bridge"
+        }));
+        assert!(!on
+            .windows(3)
+            .any(|triple| { triple[0] == "--ro-bind" && triple[2] == "/devcage/url-bridge" }));
+        assert!(!on.iter().any(|arg| {
+            arg.contains(".X11-unix") || arg.contains("/run/user") || arg == "DISPLAY"
+        }));
+    }
+
+    #[test]
     fn mcp_empty_command_errors() {
         let err = mcp_bwrap_argv(&McpBwrapPlan {
             ephemeral_home: PathBuf::from("/tmp/eph-mcp"),
             workspace: None,
             ro_mounts: Vec::new(),
+            url_bridge: None,
             net_none: false,
             command: Vec::new(),
         });
@@ -722,6 +816,7 @@ mod tests {
             ephemeral_home: PathBuf::from("/tmp/eph-mcp"),
             workspace: None,
             ro_mounts: Vec::new(),
+            url_bridge: None,
             net_none: false,
             command: vec!["true".into()],
         })

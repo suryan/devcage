@@ -68,6 +68,7 @@ None of these replace each other. Details: [recommended-stack.md](./recommended-
 |--------|----------------|
 | `cli` | clap surface |
 | `mcp_mode` | connector isolation (`devcage mcp`): stdio-safe light wrap or container |
+| `url_bridge` | opt-in sign-in URL channel for `devcage mcp --open-urls`: write-only FIFO, host checks the URL, then opens it |
 | `bwrap_plan` | Linux `bwrap` argv for `wrap` and `mcp` |
 | `profiles` | built-in policies (`agent` / `offline` / `host`) |
 | `plan` | mounts + `NetMode` |

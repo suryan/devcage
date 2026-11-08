@@ -10,8 +10,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-use crate::bwrap_plan::{mcp_bwrap_argv, McpBindMode, McpBwrapPlan};
+use crate::bwrap_plan::{mcp_bwrap_argv, McpBindMode, McpBwrapPlan, McpUrlBridge};
 use crate::config::{resolve_workspace, Config};
+use crate::url_bridge::{
+    connector_label, prepend_path_entry, start_sign_in_bridge, ChildBridgePaths, OpenUrls,
+    UrlBridge, DESKTOP_SESSION_VARS,
+};
 use crate::util::which;
 
 /// Environment variables removed so the SSH agent stays outside the cage.
@@ -103,6 +107,8 @@ pub struct McpParams {
     pub container: bool,
     /// Start even when `sandbox-exec` and `bwrap` are missing.
     pub allow_env_only: bool,
+    /// Forward sign-in links to the host. Off unless `--open-urls` is set.
+    pub open_urls: OpenUrls,
     /// `allowed` or `none`.
     pub net: String,
     /// `none`, `ro`, or `rw`.
@@ -124,6 +130,8 @@ pub struct McpSettings {
     pub container: bool,
     /// Permit env-only when no OS sandbox exists.
     pub allow_env_only: bool,
+    /// Sign-in URL bridge.
+    pub open_urls: OpenUrls,
     /// Resolved project directory when `share` is not [`WorkspaceShare::None`].
     pub workspace: Option<PathBuf>,
     /// Connector argv.
@@ -142,6 +150,9 @@ impl McpSettings {
                 "usage: devcage mcp -- <command> [args…]\nexample: devcage mcp -- uvx my-server==1.2.3"
             );
         }
+        if params.container && params.open_urls.is_enabled() {
+            anyhow::bail!("--open-urls is not available with --container");
+        }
         let net_none = parse_net(&params.net)?;
         let share = WorkspaceShare::parse(&params.share_workspace)?;
         let workspace = if share == WorkspaceShare::None {
@@ -154,6 +165,7 @@ impl McpSettings {
             share,
             container: params.container,
             allow_env_only: params.allow_env_only,
+            open_urls: params.open_urls,
             workspace,
             command: params.command.clone(),
         })
@@ -630,6 +642,8 @@ pub struct McpPlanView {
     pub pkg_guard_cache: String,
     /// Optional macOS container note.
     pub container_note: Option<&'static str>,
+    /// Sign-in URL bridge mode.
+    pub open_urls: OpenUrls,
     /// Connector argv.
     pub command: Vec<String>,
 }
@@ -649,6 +663,7 @@ pub fn format_mcp_plan(view: &McpPlanView) -> String {
         format!("share_workspace: {}", view.share.label()),
         format!("home: {}", view.home_display),
         format!("pkg_guard_cache: {}", view.pkg_guard_cache),
+        format!("open_urls: {}", view.open_urls.label()),
         format!("scrub: {}", SCRUB_ENV.join(", ")),
         "keep_injected_env: true".to_owned(),
     ];
@@ -702,14 +717,45 @@ pub fn run_mcp(cfg: &Config, params: &McpParams) -> anyhow::Result<ExitCode> {
     let home = session_dir.join("home");
     let child_env = McpChildEnv::from_ephemeral(&home, &pkg_cache, settings.net_none);
     child_env.create_dirs()?;
-    let outcome = launch_child(cfg, &settings, launch, &session_dir, &child_env, &host_home);
-    if let Err(err) = fs::remove_dir_all(&session_dir) {
+    let bridge = match open_url_bridge(&session_dir, &settings) {
+        Ok(bridge) => bridge,
+        Err(err) => {
+            wipe_session(&session_dir);
+            return Err(err);
+        },
+    };
+    let outcome = launch_child(
+        cfg,
+        &settings,
+        launch,
+        &session_dir,
+        &child_env,
+        &host_home,
+        bridge.as_ref(),
+    );
+    drop(bridge);
+    wipe_session(&session_dir);
+    outcome
+}
+
+fn open_url_bridge(
+    session_dir: &Path,
+    settings: &McpSettings,
+) -> anyhow::Result<Option<UrlBridge>> {
+    if !settings.open_urls.is_enabled() {
+        return Ok(None);
+    }
+    let label = connector_label(&settings.command);
+    start_sign_in_bridge(session_dir, &label, settings.open_urls).map(Some)
+}
+
+fn wipe_session(session_dir: &Path) {
+    if let Err(err) = fs::remove_dir_all(session_dir) {
         eprintln!(
             "devcage mcp: failed to wipe {}: {err}",
             session_dir.display()
         );
     }
-    outcome
 }
 
 fn plan_view(
@@ -738,6 +784,7 @@ fn plan_view(
         } else {
             None
         },
+        open_urls: settings.open_urls,
         command: settings.command.clone(),
     }
 }
@@ -749,6 +796,7 @@ fn verbose_banner(view: &McpPlanView) -> String {
          \x20 isolation:  {}\n\
          \x20 network:    {}\n\
          \x20 workspace:  {}\n\
+         \x20 open_urls:  {}\n\
          \x20 home:       {}\n\
          \x20 limits:     this connector's injected env; not Keychain, the SSH agent, or the rest of the host\n\
          \x20 agent:      not isolated (host client)\n",
@@ -756,6 +804,7 @@ fn verbose_banner(view: &McpPlanView) -> String {
         view.isolation,
         if view.net_none { "none" } else { "allowed" },
         view.share.label(),
+        view.open_urls.label(),
         view.home_display,
     )
 }
@@ -785,17 +834,30 @@ fn launch_child(
     session_dir: &Path,
     child_env: &McpChildEnv,
     host_home: &Path,
+    bridge: Option<&UrlBridge>,
 ) -> anyhow::Result<ExitCode> {
     match launch {
         LaunchMode::Container => launch_container(cfg, settings, child_env),
-        LaunchMode::Seatbelt => launch_seatbelt(settings, session_dir, child_env, host_home),
-        LaunchMode::Bwrap => launch_bwrap(settings, child_env, host_home),
+        LaunchMode::Seatbelt => {
+            launch_seatbelt(settings, session_dir, child_env, host_home, bridge)
+        },
+        LaunchMode::Bwrap => launch_bwrap(settings, child_env, host_home, bridge),
         LaunchMode::EnvOnly => {
             let mut cmd = command_from(&settings.command)?;
-            prepare_host_child(&mut cmd, settings, child_env, host_home);
+            prepare_host_child(
+                &mut cmd,
+                settings,
+                child_env,
+                host_home,
+                child_bridge_paths(bridge, false).as_ref(),
+            );
             wait_command(&mut cmd, &settings.command)
         },
     }
+}
+
+fn child_bridge_paths(bridge: Option<&UrlBridge>, guest: bool) -> Option<ChildBridgePaths> {
+    bridge.map(|bridge| bridge.child_paths(guest))
 }
 
 fn launch_container(
@@ -849,16 +911,23 @@ fn launch_seatbelt(
     session_dir: &Path,
     child_env: &McpChildEnv,
     host_home: &Path,
+    bridge: Option<&UrlBridge>,
 ) -> anyhow::Result<ExitCode> {
     let profile_path = session_dir.join("profile.sb");
-    let profile = seatbelt_for(settings, child_env, host_home);
+    let profile = seatbelt_for(settings, child_env, host_home, bridge);
     fs::write(&profile_path, profile)?;
     let (prog, rest) = split_command(&settings.command)?;
     let mut cmd = Command::new("sandbox-exec");
     cmd.arg("-f").arg(&profile_path);
     cmd.arg(prog);
     cmd.args(rest);
-    prepare_host_child(&mut cmd, settings, child_env, host_home);
+    prepare_host_child(
+        &mut cmd,
+        settings,
+        child_env,
+        host_home,
+        child_bridge_paths(bridge, false).as_ref(),
+    );
     wait_command(&mut cmd, &settings.command)
 }
 
@@ -866,6 +935,7 @@ fn launch_bwrap(
     settings: &McpSettings,
     child_env: &McpChildEnv,
     host_home: &Path,
+    bridge: Option<&UrlBridge>,
 ) -> anyhow::Result<ExitCode> {
     let ro_mounts = read_extra_paths(host_home, &child_env.pkg_guard_cache_dir, &settings.command)
         .into_iter()
@@ -882,6 +952,10 @@ fn launch_bwrap(
             Some((path, mode))
         }),
         ro_mounts,
+        url_bridge: bridge.map(|bridge| McpUrlBridge {
+            shim_dir: bridge.shim_dir().to_path_buf(),
+            fifo: bridge.fifo().to_path_buf(),
+        }),
         net_none: settings.net_none,
         command: settings.command.clone(),
     })?;
@@ -890,17 +964,32 @@ fn launch_bwrap(
     };
     let mut cmd = Command::new(prog);
     cmd.args(rest);
-    prepare_host_child(&mut cmd, settings, child_env, host_home);
+    prepare_host_child(
+        &mut cmd,
+        settings,
+        child_env,
+        host_home,
+        child_bridge_paths(bridge, true).as_ref(),
+    );
     wait_command(&mut cmd, &settings.command)
 }
 
-fn seatbelt_for(settings: &McpSettings, child_env: &McpChildEnv, host_home: &Path) -> String {
+fn seatbelt_for(
+    settings: &McpSettings,
+    child_env: &McpChildEnv,
+    host_home: &Path,
+    bridge: Option<&UrlBridge>,
+) -> String {
     let extras = read_extra_paths(host_home, &child_env.pkg_guard_cache_dir, &settings.command);
     let workspace = settings
         .workspace
         .as_deref()
         .map(|path| (path, settings.share));
-    let fs_plan = mcp_fs_plan(&child_env.home, workspace, &extras);
+    let mut fs_plan = mcp_fs_plan(&child_env.home, workspace, &extras);
+    if let Some(bridge) = bridge {
+        push_unique(&mut fs_plan.read, bridge.shim_dir());
+        push_unique(&mut fs_plan.write, bridge.fifo());
+    }
     render_seatbelt(&fs_plan, &secret_paths(host_home), settings.net_none)
 }
 
@@ -1049,6 +1138,7 @@ fn prepare_host_child(
     settings: &McpSettings,
     child_env: &McpChildEnv,
     host_home: &Path,
+    bridge: Option<&ChildBridgePaths>,
 ) {
     let cwd = settings
         .workspace
@@ -1059,7 +1149,16 @@ fn prepare_host_child(
         cmd.env(key, value);
     }
     let existing = std::env::var("PATH").unwrap_or_default();
-    cmd.env("PATH", prepend_shim_path(host_home, &existing));
+    let mut path = prepend_shim_path(host_home, &existing);
+    if let Some(bridge) = bridge {
+        path = prepend_path_entry(&bridge.path_prefix, &path);
+        cmd.env("BROWSER", &bridge.browser);
+        cmd.env("DEVCAGE_URL_BRIDGE", &bridge.fifo);
+        for key in DESKTOP_SESSION_VARS {
+            cmd.env_remove(*key);
+        }
+    }
+    cmd.env("PATH", path);
     for key in SCRUB_ENV {
         cmd.env_remove(*key);
     }
@@ -1127,7 +1226,7 @@ mod tests {
         choose_launch, container_env_pairs, detect_os_sandbox, format_mcp_plan,
         host_pkg_guard_cache, mcp_container_args, mcp_fs_plan, parse_net, prepend_shim_path,
         render_seatbelt, should_scrub, HostCacheInputs, LaunchMode, McpChildEnv, McpContainerPlan,
-        McpParams, McpPlanView, McpSettings, OsSandbox, WorkspaceShare,
+        McpParams, McpPlanView, McpSettings, OpenUrls, OsSandbox, WorkspaceShare,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1164,6 +1263,7 @@ mod tests {
             verbose: false,
             container: false,
             allow_env_only: false,
+            open_urls: OpenUrls::Off,
             net: "allowed".into(),
             share_workspace: "none".into(),
             workspace: None,
@@ -1176,6 +1276,7 @@ mod tests {
             verbose: false,
             container: false,
             allow_env_only: false,
+            open_urls: OpenUrls::Off,
             net: "none".into(),
             share_workspace: "none".into(),
             workspace: Some(PathBuf::from("/tmp/should-not-mount")),
@@ -1184,6 +1285,20 @@ mod tests {
         .expect("settings");
         assert!(settings.workspace.is_none());
         assert!(settings.net_none);
+        assert_eq!(settings.open_urls, OpenUrls::Off);
+
+        let refused = McpSettings::from_params(&McpParams {
+            print_only: false,
+            verbose: false,
+            container: true,
+            allow_env_only: false,
+            open_urls: OpenUrls::Open,
+            net: "allowed".into(),
+            share_workspace: "none".into(),
+            workspace: None,
+            command: vec!["uvx".into(), "server==1.2.3".into()],
+        });
+        assert!(refused.is_err());
     }
 
     #[test]
@@ -1399,11 +1514,13 @@ mod tests {
             home_display: "(ephemeral, wiped on exit)".into(),
             pkg_guard_cache: "/host/cache/pkg-guard".into(),
             container_note: None,
+            open_urls: OpenUrls::Off,
             command: vec!["uvx".into(), "server==1.2.3".into()],
         });
         assert!(text.contains("mode: mcp"));
         assert!(text.contains("agent_isolated: false"));
         assert!(text.contains("share_workspace: none"));
+        assert!(text.contains("open_urls: off"));
         assert!(text.contains("keep_injected_env: true"));
         assert!(text.contains("SSH_AUTH_SOCK"));
         assert!(!text.contains("test-key"));

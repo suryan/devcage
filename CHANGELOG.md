@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`devcage mcp --open-urls`.** Opt-in sign-in link bridge for connectors that call `xdg-open` (for example `mcp-remote`). The cage gets a read-only shim and a write-only FIFO. DevCage prints `devcage: sign-in link for <connector>: <url>` and, when a graphical session exists, opens that URL with the host browser as a single argument. `--open-urls=print` only prints the link. The display socket, DBus session bus, and `/run/user` stay outside the cage. While the flag is on, desktop session variables such as `DISPLAY` are not passed in, so the usual `xdg-open` script runs the shim instead of the session bus. Only `https` URLs are accepted, plus `http` for `localhost`, `127.0.0.1`, and `::1`.
+
 - **`devcage mcp` connector isolation.** Opt-in CLI link, same shape as mcp-guard and mcp-secret-launcher. The agent stays on the host. The boxed server keeps the secret injected for its profile and does not get Keychain, the SSH agent, or the rest of the host home. Light wrap (Seatbelt / bwrap) by default; `--container` is optional. Missing an OS sandbox fails closed unless `--allow-env-only`.
 
 - **One-line install:** `curl -fsSL https://raw.githubusercontent.com/suryan/devcage/main/scripts/install.sh | bash -s -- --yes` clones, builds, and installs to `$HOME/.local/bin`. From a checkout, `./scripts/install.sh` still builds that tree. Flags: `--yes`, `--ref`, `--prefix`, `--local`, `--no-keep-src`. Rustup is bootstrapped when `cargo` is missing.

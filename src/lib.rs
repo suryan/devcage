@@ -30,6 +30,7 @@ mod orchestrate;
 mod plan;
 mod profiles;
 mod session;
+mod url_bridge;
 mod util;
 mod wrap_mode;
 
@@ -191,6 +192,7 @@ fn dispatch(cfg: &Config, cli: Cli) -> anyhow::Result<ExitCode> {
             verbose,
             container,
             allow_env_only,
+            open_urls,
             net,
             share_workspace,
             workspace,
@@ -202,6 +204,7 @@ fn dispatch(cfg: &Config, cli: Cli) -> anyhow::Result<ExitCode> {
                 verbose,
                 container,
                 allow_env_only,
+                open_urls: url_bridge::OpenUrls::from_cli(open_urls.as_deref())?,
                 net,
                 share_workspace,
                 workspace,

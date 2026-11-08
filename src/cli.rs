@@ -200,6 +200,7 @@ pub enum Commands {
     ///   devcage mcp -- uvx my-server==1.2.3
     ///   devcage mcp --net none --share-workspace ro -- npx -y some-server@1.0.0
     ///   devcage mcp --print -- uvx my-server==1.2.3
+    ///   devcage mcp --open-urls -- npx -y mcp-remote@0.16.0 <https://mcp.atlassian.com/v1/mcp/authv2>
     Mcp {
         /// Print the plan and do not start the connector.
         #[arg(long)]
@@ -217,6 +218,20 @@ pub enum Commands {
         /// Env-only does not limit filesystem or Keychain access.
         #[arg(long)]
         allow_env_only: bool,
+        /// Forward connector sign-in links to the host.
+        ///
+        /// `--open-urls` prints the link and opens it when a graphical session
+        /// exists. `--open-urls=print` only prints the link. Off by default.
+        /// The display socket, `DBus` session bus, and `/run/user` stay outside the cage.
+        #[arg(
+            long,
+            require_equals = true,
+            num_args = 0..=1,
+            default_missing_value = "open",
+            value_name = "MODE",
+            value_parser = ["open", "print"]
+        )]
+        open_urls: Option<String>,
         /// Process network: `allowed` (default) or `none`.
         #[arg(long, default_value = "allowed")]
         net: String,
@@ -418,6 +433,7 @@ mod tests {
             verbose,
             container,
             allow_env_only,
+            open_urls,
             net,
             share_workspace,
             command,
@@ -430,9 +446,29 @@ mod tests {
         assert!(!verbose);
         assert!(!container);
         assert!(!allow_env_only);
+        assert!(open_urls.is_none());
         assert_eq!(net, "allowed");
         assert_eq!(share_workspace, "none");
         assert_eq!(command, vec!["uvx", "server==1.2.3"]);
+    }
+
+    #[test]
+    fn parses_open_urls_flag() {
+        let open =
+            Cli::try_parse_from(["devcage", "mcp", "--open-urls", "--", "true"]).expect("open");
+        let Commands::Mcp { open_urls, .. } = open.command else {
+            unreachable!("expected Mcp");
+        };
+        assert_eq!(open_urls.as_deref(), Some("open"));
+
+        let print = Cli::try_parse_from(["devcage", "mcp", "--open-urls=print", "--", "true"])
+            .expect("print");
+        let Commands::Mcp { open_urls, .. } = print.command else {
+            unreachable!("expected Mcp");
+        };
+        assert_eq!(open_urls.as_deref(), Some("print"));
+
+        assert!(Cli::try_parse_from(["devcage", "mcp", "--open-urls=file", "--", "true"]).is_err());
     }
 
     #[test]
